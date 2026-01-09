@@ -108,7 +108,9 @@ export function Header({ lastSync, loading, onSync }: HeaderProps) {
                   <RefreshCw className="h-4 w-4" />
                 </motion.div>
               }
-            />
+            >
+              Sync
+            </Button>
             <Button
               onClick={onSync}
               loading={loading}
