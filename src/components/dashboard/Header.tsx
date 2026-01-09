@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Activity, RefreshCw, LayoutDashboard, Users } from 'lucide-react'
+import { Activity, RefreshCw, AlertTriangle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -17,8 +17,8 @@ export function Header({ lastSync, loading, onSync }: HeaderProps) {
   const pathname = usePathname()
 
   const navItems = [
-    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/leden', label: 'Alle Leden', icon: Users },
+    { href: '/dashboard', label: 'Churn Risico', icon: AlertTriangle },
+    { href: '/leden', label: 'Ledenlijst', icon: Users },
   ]
 
   return (
