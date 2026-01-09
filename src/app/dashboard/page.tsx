@@ -1,8 +1,20 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { AlertCircle, Users, UserX, Activity, Clock, MessageCircle, RefreshCw, PhoneCall } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { motion } from 'framer-motion'
+import { Users, UserX, AlertCircle, Clock } from 'lucide-react'
 
+// Components
+import { Header } from '@/components/dashboard/Header'
+import { StatsCard } from '@/components/dashboard/StatsCard'
+import { ActionItem } from '@/components/dashboard/ActionItem'
+import { MemberList } from '@/components/dashboard/MemberList'
+import { SearchFilter } from '@/components/dashboard/SearchFilter'
+import { RiskTrendChart } from '@/components/dashboard/RiskTrendChart'
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card'
+import { SkeletonStatsCard } from '@/components/ui/Skeleton'
+
+// Types
 interface Member {
   klantRef: string
   voornaam: string
@@ -45,7 +57,29 @@ interface Action {
   dueTime: string
 }
 
+// Animation variants
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.2,
+    },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4 },
+  },
+}
+
 export default function Dashboard() {
+  // Data state
   const [riskMembers, setRiskMembers] = useState<RiskMember[]>([])
   const [actions, setActions] = useState<Action[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,20 +88,25 @@ export default function Dashboard() {
     totalMembers: 0,
     atRisk: 0,
     criticalRisk: 0,
-    avgCheckIns: 0
+    avgCheckIns: 0,
   })
 
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [riskFilter, setRiskFilter] = useState('')
+  const [sortBy, setSortBy] = useState('riskScore-desc')
+
+  // Fetch data
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/members?filter=at-risk&limit=20')
+      const response = await fetch('/api/members?filter=at-risk&limit=50')
       const data = await response.json()
 
       if (data.success) {
         const members: Member[] = data.data.members
 
-        // Transform to RiskMember format
-        const transformedMembers: RiskMember[] = members.map(m => {
+        const transformedMembers: RiskMember[] = members.map((m) => {
           const lastCheckIn = m.laatsteCheckIn ? new Date(m.laatsteCheckIn) : null
           const daysSinceLastVisit = lastCheckIn
             ? Math.floor((Date.now() - lastCheckIn.getTime()) / (1000 * 60 * 60 * 24))
@@ -83,32 +122,34 @@ export default function Dashboard() {
             riskScore: m.riskScore,
             daysSinceLastVisit,
             producten: m.producten,
-            checkIns30Dagen: m.checkIns30Dagen
+            checkIns30Dagen: m.checkIns30Dagen,
           }
         })
 
         setRiskMembers(transformedMembers)
         setStats(data.data.stats)
 
-        // Generate actions based on risk members
+        // Generate actions
         const generatedActions: Action[] = transformedMembers
-          .filter(m => m.riskLevel === 'critical' || m.riskLevel === 'high')
+          .filter((m) => m.riskLevel === 'critical' || m.riskLevel === 'high')
           .slice(0, 5)
           .map((m, i) => ({
             id: `action-${i}`,
             type: 'whatsapp' as const,
             priority: m.riskLevel === 'critical' ? 1 : 2,
-            title: m.riskLevel === 'critical'
-              ? `Urgente check-in met ${m.name.split(' ')[0]}`
-              : `Follow-up ${m.name.split(' ')[0]}`,
-            description: m.daysSinceLastVisit > 90
-              ? `Al ${m.daysSinceLastVisit} dagen niet gezien - persoonlijk bericht sturen`
-              : m.checkIns30Dagen === 0
-              ? 'Geen check-ins deze maand - motivatie check'
-              : `Frequentie gedaald - ${m.checkIns30Dagen} check-ins in 30 dagen`,
+            title:
+              m.riskLevel === 'critical'
+                ? `Urgente check-in met ${m.name.split(' ')[0]}`
+                : `Follow-up ${m.name.split(' ')[0]}`,
+            description:
+              m.daysSinceLastVisit > 90
+                ? `Al ${m.daysSinceLastVisit} dagen niet gezien`
+                : m.checkIns30Dagen === 0
+                ? 'Geen check-ins deze maand'
+                : `${m.checkIns30Dagen} check-ins in 30 dagen`,
             targetName: m.name,
             targetPhone: m.phone,
-            dueTime: 'Vandaag'
+            dueTime: 'Vandaag',
           }))
 
         setActions(generatedActions)
@@ -123,229 +164,199 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData()
-    // Auto-refresh elke 5 minuten
     const interval = setInterval(fetchData, 5 * 60 * 1000)
     return () => clearInterval(interval)
   }, [fetchData])
 
-  const getRiskColor = (level: string) => {
-    switch(level) {
-      case 'critical': return 'bg-red-100 text-red-800 border-red-200'
-      case 'high': return 'bg-orange-100 text-orange-800 border-orange-200'
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      default: return 'bg-green-100 text-green-800 border-green-200'
+  // Filtered and sorted members
+  const filteredMembers = useMemo(() => {
+    let result = [...riskMembers]
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter(
+        (m) =>
+          m.name.toLowerCase().includes(query) ||
+          m.email.toLowerCase().includes(query) ||
+          m.phone.includes(query)
+      )
     }
+
+    // Risk level filter
+    if (riskFilter) {
+      result = result.filter((m) => m.riskLevel === riskFilter)
+    }
+
+    // Sorting
+    const [field, direction] = sortBy.split('-')
+    result.sort((a, b) => {
+      let comparison = 0
+      if (field === 'riskScore') {
+        comparison = a.riskScore - b.riskScore
+      } else if (field === 'daysSince') {
+        comparison = a.daysSinceLastVisit - b.daysSinceLastVisit
+      } else if (field === 'name') {
+        comparison = a.name.localeCompare(b.name)
+      }
+      return direction === 'desc' ? -comparison : comparison
+    })
+
+    return result
+  }, [riskMembers, searchQuery, riskFilter, sortBy])
+
+  // Count active filters
+  const activeFilters = [searchQuery, riskFilter].filter(Boolean).length
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setRiskFilter('')
+    setSortBy('riskScore-desc')
   }
 
-  const getActionIcon = (type: string) => {
-    switch(type) {
-      case 'call': return <PhoneCall className="h-4 w-4" />
-      case 'whatsapp': return <MessageCircle className="h-4 w-4" />
-      default: return <MessageCircle className="h-4 w-4" />
-    }
-  }
+  // Top risk members for spotlight
+  const topRiskMembers = filteredMembers.slice(0, 4)
+  const remainingMembers = filteredMembers.slice(4)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-3">
-              <Activity className="h-8 w-8 text-blue-600" />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Feeling Fit Utrecht</h1>
-                <p className="text-sm text-gray-500">Gym Operating System</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">
-                {lastSync ? `Laatste sync: ${lastSync.toLocaleTimeString('nl-NL')}` : 'Nog niet gesynchroniseerd'}
-              </span>
-              <button
-                onClick={fetchData}
-                disabled={loading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                {loading ? 'Laden...' : 'Sync Nu'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gradient-brand">
+      <Header lastSync={lastSync} loading={loading} onSync={fetchData} />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <motion.main
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+      >
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Actieve Leden</p>
-                <p className="text-2xl font-bold text-gray-900">{loading ? '...' : stats.totalMembers}</p>
-              </div>
-              <Users className="h-8 w-8 text-gray-400" />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">At Risk (Hoog+Kritiek)</p>
-                <p className="text-2xl font-bold text-red-600">{loading ? '...' : stats.atRisk}</p>
-              </div>
-              <UserX className="h-8 w-8 text-red-400" />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Kritiek Risico</p>
-                <p className="text-2xl font-bold text-red-800">{loading ? '...' : stats.criticalRisk}</p>
-              </div>
-              <AlertCircle className="h-8 w-8 text-red-600" />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Gem. Check-ins/Week</p>
-                <p className="text-2xl font-bold text-gray-900">{loading ? '...' : stats.avgCheckIns}</p>
-              </div>
-              <Clock className="h-8 w-8 text-gray-400" />
-            </div>
-          </div>
-        </div>
+        <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {loading ? (
+            <>
+              <SkeletonStatsCard />
+              <SkeletonStatsCard />
+              <SkeletonStatsCard />
+              <SkeletonStatsCard />
+            </>
+          ) : (
+            <>
+              <StatsCard
+                title="Actieve Leden"
+                value={stats.totalMembers}
+                icon={Users}
+                variant="default"
+                delay={0}
+              />
+              <StatsCard
+                title="At Risk"
+                value={stats.atRisk}
+                icon={UserX}
+                variant="warning"
+                delay={0.1}
+              />
+              <StatsCard
+                title="Kritiek Risico"
+                value={stats.criticalRisk}
+                icon={AlertCircle}
+                variant="danger"
+                delay={0.2}
+              />
+              <StatsCard
+                title="Gem. Check-ins/Week"
+                value={stats.avgCheckIns}
+                icon={Clock}
+                variant="success"
+                delay={0.3}
+              />
+            </>
+          )}
+        </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Search & Filters */}
+        <motion.div variants={itemVariants} className="mb-6">
+          <SearchFilter
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            riskFilter={riskFilter}
+            onRiskFilterChange={setRiskFilter}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+            activeFilters={activeFilters}
+            onClearFilters={clearFilters}
+          />
+        </motion.div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Daily Actions */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">Acties Vandaag</h2>
-                <p className="text-sm text-gray-500">{actions.length} taken te doen</p>
-              </div>
-              <div className="divide-y divide-gray-200">
+          <motion.div variants={itemVariants} className="lg:col-span-1">
+            <Card hover={false} padding="none">
+              <CardHeader className="px-6 py-4">
+                <CardTitle>Acties Vandaag</CardTitle>
+                <CardDescription>{actions.length} taken te doen</CardDescription>
+              </CardHeader>
+              <div className="px-2">
                 {loading ? (
-                  <div className="p-4 text-center text-gray-500">Laden...</div>
+                  <div className="p-8 text-center text-slate-500">Laden...</div>
                 ) : actions.length === 0 ? (
-                  <div className="p-4 text-center text-gray-500">Geen acties vandaag</div>
-                ) : (
-                  actions.map(action => (
-                    <div key={action.id} className="p-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-start space-x-3">
-                        <div className={`mt-1 p-2 rounded-full ${
-                          action.priority === 1 ? 'bg-red-100' : 'bg-yellow-100'
-                        }`}>
-                          {getActionIcon(action.type)}
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="text-sm font-medium text-gray-900">{action.title}</h3>
-                          <p className="text-sm text-gray-500 mt-1">{action.description}</p>
-                          <div className="flex items-center mt-2 space-x-4">
-                            <span className="text-xs text-gray-400">{action.targetName}</span>
-                            <span className="text-xs text-blue-600 font-medium">{action.dueTime}</span>
-                          </div>
-                        </div>
-                        {action.targetPhone && (
-                          <a
-                            href={`https://wa.me/${action.targetPhone.replace(/[^0-9]/g, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                          >
-                            WhatsApp
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Churn Risk - Top 4 */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">Hoogste Churn Risico</h2>
-                <p className="text-sm text-gray-500">Leden die direct aandacht nodig hebben</p>
-              </div>
-              <div className="divide-y divide-gray-200">
-                {loading ? (
-                  <div className="p-4 text-center text-gray-500">Laden...</div>
-                ) : riskMembers.slice(0, 4).map(member => (
-                  <div key={member.id} className="p-4 hover:bg-gray-50 transition-colors">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-900">{member.name}</h3>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {member.phone || member.email || 'Geen contact'}
-                        </p>
-                        <div className="flex items-center mt-2 space-x-2">
-                          <span className={`text-xs px-2 py-1 rounded-full border ${getRiskColor(member.riskLevel)}`}>
-                            {member.riskLevel === 'critical' ? 'Kritiek' :
-                             member.riskLevel === 'high' ? 'Hoog' :
-                             member.riskLevel === 'medium' ? 'Medium' : 'Laag'}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {member.daysSinceLastVisit < 999 ? `${member.daysSinceLastVisit} dagen` : 'Nooit bezocht'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-gray-900">{member.riskScore}</div>
-                        <div className="text-xs text-gray-500">score</div>
-                      </div>
-                    </div>
+                  <div className="p-8 text-center text-slate-500">
+                    Geen acties vandaag
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Alle Risico Leden */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">Alle Risico Leden</h2>
-                <p className="text-sm text-gray-500">{riskMembers.length} leden met verhoogd risico</p>
-              </div>
-              <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-                {loading ? (
-                  <div className="p-4 text-center text-gray-500">Laden...</div>
-                ) : riskMembers.length === 0 ? (
-                  <div className="p-4 text-center text-gray-500">Geen risico leden gevonden</div>
                 ) : (
-                  riskMembers.slice(4).map(member => (
-                    <div key={member.id} className="p-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-900">{member.name}</h3>
-                          <p className="text-xs text-gray-500 mt-1">{member.producten.join(', ')}</p>
-                          <div className="flex items-center mt-2 space-x-2">
-                            <span className={`text-xs px-2 py-1 rounded-full border ${getRiskColor(member.riskLevel)}`}>
-                              {member.riskLevel === 'critical' ? 'Kritiek' :
-                               member.riskLevel === 'high' ? 'Hoog' :
-                               member.riskLevel === 'medium' ? 'Medium' : 'Laag'}
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              {member.daysSinceLastVisit < 999 ? `${member.daysSinceLastVisit}d` : 'Nooit'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-gray-900">{member.riskScore}</div>
-                        </div>
-                      </div>
-                    </div>
+                  actions.map((action, index) => (
+                    <ActionItem key={action.id} action={action} index={index} />
                   ))
                 )}
               </div>
-            </div>
-          </div>
+            </Card>
+          </motion.div>
+
+          {/* Top Risk Members */}
+          <motion.div variants={itemVariants} className="lg:col-span-1">
+            <Card hover={false} padding="none">
+              <CardHeader className="px-6 py-4">
+                <CardTitle>Hoogste Churn Risico</CardTitle>
+                <CardDescription>Leden die direct aandacht nodig hebben</CardDescription>
+              </CardHeader>
+              <MemberList
+                members={topRiskMembers}
+                loading={loading}
+                compact={false}
+                maxHeight="auto"
+                emptyMessage="Geen risico leden gevonden"
+              />
+            </Card>
+          </motion.div>
+
+          {/* All Risk Members */}
+          <motion.div variants={itemVariants} className="lg:col-span-1">
+            <Card hover={false} padding="none">
+              <CardHeader className="px-6 py-4">
+                <CardTitle>Alle Risico Leden</CardTitle>
+                <CardDescription>
+                  {filteredMembers.length} leden
+                  {activeFilters > 0 && ' (gefilterd)'}
+                </CardDescription>
+              </CardHeader>
+              <MemberList
+                members={remainingMembers}
+                loading={loading}
+                compact={true}
+                maxHeight="24rem"
+                emptyMessage={
+                  activeFilters > 0
+                    ? 'Geen leden gevonden met huidige filters'
+                    : 'Geen overige risico leden'
+                }
+              />
+            </Card>
+          </motion.div>
         </div>
-      </div>
+
+        {/* Risk Trend Chart */}
+        <motion.div variants={itemVariants}>
+          <RiskTrendChart />
+        </motion.div>
+      </motion.main>
     </div>
   )
 }

@@ -168,34 +168,40 @@ function calculateRiskScore(
 
   const now = new Date()
 
-  // Factor 1: Dagen sinds laatste check-in
+  // Factor 1: Dagen sinds laatste check-in (main factor)
   if (laatsteCheckIn) {
     const daysSinceLastCheckIn = Math.floor(
       (now.getTime() - laatsteCheckIn.getTime()) / (1000 * 60 * 60 * 24)
     )
 
-    if (daysSinceLastCheckIn > 90) {
-      score += 40
+    if (daysSinceLastCheckIn > 180) {
+      score += 50  // 6+ maanden
+    } else if (daysSinceLastCheckIn > 90) {
+      score += 40  // 3-6 maanden
+    } else if (daysSinceLastCheckIn > 60) {
+      score += 35  // 2-3 maanden
     } else if (daysSinceLastCheckIn > 30) {
-      score += 30
+      score += 25  // 1-2 maanden
     } else if (daysSinceLastCheckIn > 14) {
-      score += 20
+      score += 15  // 2-4 weken
     } else if (daysSinceLastCheckIn > 7) {
-      score += 10
+      score += 8   // 1-2 weken
     }
+    // Recent (< 7 dagen) = 0 punten
   } else {
-    // Geen check-ins ooit
-    score += 35
+    // Geen check-ins ooit - hoogste risico
+    score += 55
   }
 
-  // Factor 2: Check-in frequentie laatste 30 dagen
+  // Factor 2: Check-in frequentie laatste 30 dagen (secondary factor)
   if (checkIns30Dagen === 0) {
-    score += 25
+    score += 20
   } else if (checkIns30Dagen < 2) {
-    score += 15
+    score += 12
   } else if (checkIns30Dagen < 4) {
     score += 5
   }
+  // 4+ check-ins in 30 dagen = 0 punten (goed!)
 
   // Factor 3: Nieuw lid met lage activiteit
   if (actiefSinds) {
@@ -204,13 +210,13 @@ function calculateRiskScore(
     )
 
     if (daysSinceJoin < 90 && checkIns30Dagen < 3) {
-      score += 20
+      score += 15
     }
   }
 
-  // Bepaal level
+  // Bepaal level based on score
   let level: 'low' | 'medium' | 'high' | 'critical'
-  if (score >= 60) {
+  if (score >= 55) {
     level = 'critical'
   } else if (score >= 40) {
     level = 'high'
