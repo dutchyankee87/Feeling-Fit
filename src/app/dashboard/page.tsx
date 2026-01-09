@@ -101,7 +101,7 @@ export default function Dashboard() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/members?filter=at-risk&limit=50')
+      const response = await fetch('/api/members?filter=all&limit=300')
       const data = await response.json()
 
       if (data.success) {
@@ -193,9 +193,9 @@ export default function Dashboard() {
 
     // Visit status filter
     if (visitFilter === 'never') {
-      result = result.filter((m) => m.daysSinceLastVisit >= 999)
+      result = result.filter((m) => m.daysSinceLastVisit >= 900)
     } else if (visitFilter === 'visited') {
-      result = result.filter((m) => m.daysSinceLastVisit < 999)
+      result = result.filter((m) => m.daysSinceLastVisit < 900)
     }
 
     // Sorting
