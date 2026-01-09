@@ -143,7 +143,7 @@ export default function Dashboard() {
                 ? `Urgente check-in met ${m.name.split(' ')[0]}`
                 : `Follow-up ${m.name.split(' ')[0]}`,
             description:
-              m.daysSinceLastVisit >= 999
+              m.daysSinceLastVisit >= 900
                 ? 'Nog nooit ingecheckt - kennismakingsgesprek?'
                 : m.daysSinceLastVisit > 90
                 ? `Al ${m.daysSinceLastVisit} dagen niet gezien`
