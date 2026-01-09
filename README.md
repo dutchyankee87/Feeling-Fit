@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Feeling Fit Gym Operating System
 
-## Getting Started
+Een intelligent beslissingssysteem voor Feeling Fit Utrecht dat churn voorkomt en lead conversie verhoogt.
 
-First, run the development server:
+## Kernfunctionaliteiten
+
+### 1. Churn Prevention Dashboard
+- **Real-time risico monitoring**: Detecteert leden die dreigen weg te gaan
+- **AI-gedreven scoring**: 4 risiconiveaus (low, medium, high, critical)
+- **Automatische detectie** van patronen zoals:
+  - 14+ dagen geen check-in
+  - Dalende trainingsfrequentie
+  - Sudden stop na consistent trainen
+
+### 2. Lead Nurturing System
+- **30% no-show probleem** terugdringen naar <15%
+- **Automatische follow-up** na 48 uur
+- **Lead status tracking**: new → contacted → trial → converted
+
+### 3. Daily Action Feed
+- **Geprioriteerde taken** voor gym staff
+- **1-click WhatsApp berichten**
+- **Context-aware suggesties**
+
+### 4. WhatsApp Integration
+- **Automated outreach** met templates
+- **Interactive bot** voor trainingsschemas
+- **Bulk messaging** met rate limiting
+
+## Tech Stack
+
+- **Frontend**: Next.js 14, TypeScript, Tailwind CSS
+- **Database**: Supabase/PostgreSQL met Drizzle ORM
+- **APIs**: CRM integratie, WhatsApp Business API (Twilio)
+- **Deployment**: Vercel
+
+## Setup Instructies
+
+### 1. Environment Variables
+Kopieer `.env.local.example` naar `.env.local` en vul in:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# Database
+DATABASE_URL=postgresql://...
+
+# CRM API (vraag aan Feeling Fit)
+CRM_API_URL=https://api.your-crm.com
+CRM_API_KEY=your_api_key
+
+# WhatsApp (Twilio)
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
+TWILIO_WHATSAPP_NUMBER=whatsapp:+31...
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Database Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# Generate database schema
+npm run db:generate
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Push schema to database
+npm run db:push
 
-## Learn More
+# Open database studio
+npm run db:studio
+```
 
-To learn more about Next.js, take a look at the following resources:
+### 3. Development
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+# Install dependencies
+npm install
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Run development server
+npm run dev
 
-## Deploy on Vercel
+# Build for production
+npm run build
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## API Endpoints
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Sync CRM Data
+```
+POST /api/sync
+Body: { gymId: "feeling-fit-utrecht" }
+```
+
+### Get Daily Actions
+```
+GET /api/actions?gymId=feeling-fit-utrecht&status=pending
+```
+
+### Complete Action
+```
+POST /api/actions
+Body: { actionId: "...", outcome: "...", completedBy: "..." }
+```
+
+## ROI Metrics
+
+### Lead Conversion
+- **Huidige situatie**: 30% no-show (30 van 100 leads)
+- **Met systeem**: 15% no-show
+- **Resultaat**: 15 extra klanten/maand = €7.200/jaar
+
+### Churn Prevention
+- **Huidige situatie**: 10% churn per kwartaal (50 leden)
+- **Met systeem**: 7% churn
+- **Resultaat**: 15 leden behouden = €1.800/kwartaal
+
+## Deployment Checklist
+
+- [ ] Supabase project aanmaken
+- [ ] Database schema deployen
+- [ ] CRM API credentials verkrijgen
+- [ ] Twilio WhatsApp sandbox activeren
+- [ ] Vercel deployment configureren
+- [ ] Environment variables instellen
+- [ ] Initial data sync uitvoeren
+
+## Support
+
+Voor vragen of problemen, neem contact op met het development team.
