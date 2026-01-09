@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { AlertCircle, Users, UserX, Activity, Clock, MessageCircle, RefreshCw } from 'lucide-react'
+import { AlertCircle, Users, UserX, Activity, Clock, MessageCircle, RefreshCw, PhoneCall } from 'lucide-react'
 
 interface Member {
   klantRef: string
