@@ -94,6 +94,7 @@ export default function Dashboard() {
   // Filter state
   const [searchQuery, setSearchQuery] = useState('')
   const [riskFilter, setRiskFilter] = useState('')
+  const [visitFilter, setVisitFilter] = useState('')
   const [sortBy, setSortBy] = useState('riskScore-desc')
 
   // Fetch data
@@ -142,7 +143,9 @@ export default function Dashboard() {
                 ? `Urgente check-in met ${m.name.split(' ')[0]}`
                 : `Follow-up ${m.name.split(' ')[0]}`,
             description:
-              m.daysSinceLastVisit > 90
+              m.daysSinceLastVisit >= 999
+                ? 'Nog nooit ingecheckt - kennismakingsgesprek?'
+                : m.daysSinceLastVisit > 90
                 ? `Al ${m.daysSinceLastVisit} dagen niet gezien`
                 : m.checkIns30Dagen === 0
                 ? 'Geen check-ins deze maand'
@@ -188,6 +191,13 @@ export default function Dashboard() {
       result = result.filter((m) => m.riskLevel === riskFilter)
     }
 
+    // Visit status filter
+    if (visitFilter === 'never') {
+      result = result.filter((m) => m.daysSinceLastVisit >= 999)
+    } else if (visitFilter === 'visited') {
+      result = result.filter((m) => m.daysSinceLastVisit < 999)
+    }
+
     // Sorting
     const [field, direction] = sortBy.split('-')
     result.sort((a, b) => {
@@ -203,14 +213,15 @@ export default function Dashboard() {
     })
 
     return result
-  }, [riskMembers, searchQuery, riskFilter, sortBy])
+  }, [riskMembers, searchQuery, riskFilter, visitFilter, sortBy])
 
   // Count active filters
-  const activeFilters = [searchQuery, riskFilter].filter(Boolean).length
+  const activeFilters = [searchQuery, riskFilter, visitFilter].filter(Boolean).length
 
   const clearFilters = () => {
     setSearchQuery('')
     setRiskFilter('')
+    setVisitFilter('')
     setSortBy('riskScore-desc')
   }
 
@@ -278,6 +289,8 @@ export default function Dashboard() {
             onSearchChange={setSearchQuery}
             riskFilter={riskFilter}
             onRiskFilterChange={setRiskFilter}
+            visitFilter={visitFilter}
+            onVisitFilterChange={setVisitFilter}
             sortBy={sortBy}
             onSortChange={setSortBy}
             activeFilters={activeFilters}

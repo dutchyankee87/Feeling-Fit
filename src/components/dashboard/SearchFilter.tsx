@@ -13,6 +13,8 @@ interface SearchFilterProps {
   onSearchChange: (value: string) => void
   riskFilter: string
   onRiskFilterChange: (value: string) => void
+  visitFilter: string
+  onVisitFilterChange: (value: string) => void
   sortBy: string
   onSortChange: (value: string) => void
   activeFilters?: number
@@ -36,11 +38,19 @@ const sortOptions = [
   { value: 'name-desc', label: 'Naam (Z → A)' },
 ]
 
+const visitOptions = [
+  { value: '', label: 'Alle bezoekstatus' },
+  { value: 'never', label: 'Nooit gezien' },
+  { value: 'visited', label: '1+ keer geweest' },
+]
+
 export function SearchFilter({
   searchQuery,
   onSearchChange,
   riskFilter,
   onRiskFilterChange,
+  visitFilter,
+  onVisitFilterChange,
   sortBy,
   onSortChange,
   activeFilters = 0,
@@ -90,6 +100,13 @@ export function SearchFilter({
           onChange={(e) => onRiskFilterChange(e.target.value)}
           options={riskOptions}
           className="w-44"
+        />
+
+        <Select
+          value={visitFilter}
+          onChange={(e) => onVisitFilterChange(e.target.value)}
+          options={visitOptions}
+          className="w-40"
         />
 
         <Select
