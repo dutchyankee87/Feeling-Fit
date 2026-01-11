@@ -1,5 +1,6 @@
 const MEMBERS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyEAjR7NEHc10MkPwx3KGLv99ERMftCmaqqBqeQsmTnvQJwyVu9HE7S-pbR8Yy7fNRK1CcpSQsDVvB/pub?output=csv'
 const CHECKINS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyEAjR7NEHc10MkPwx3KGLv99ERMftCmaqqBqeQsmTnvQJwyVu9HE7S-pbR8Yy7fNRK1CcpSQsDVvB/pub?gid=1453739890&single=true&output=csv'
+const PAYMENTS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyEAjR7NEHc10MkPwx3KGLv99ERMftCmaqqBqeQsmTnvQJwyVu9HE7S-pbR8Yy7fNRK1CcpSQsDVvB/pub?gid=1399037059&single=true&output=csv'
 
 export interface Member {
   klantRef: string
@@ -17,6 +18,10 @@ export interface Member {
   checkIns90Dagen: number
   riskScore: number
   riskLevel: 'low' | 'medium' | 'high' | 'critical'
+  // LTV (Lifetime Value) fields
+  ltv: number // Totaal betaald sinds 1-1-2024
+  aantalBetalingen: number
+  laatsteBetaling: Date | null
 }
 
 interface RawMemberRow {
@@ -41,6 +46,26 @@ interface CheckIn {
   voornaam: string
   achternaam: string
   datum: Date
+}
+
+interface RawPaymentRow {
+  'Order ref.': string
+  'Orderdatum': string
+  'Klant ref.': string
+  'Klant voornaam': string
+  'Klant achternaam': string
+  'Omschrijving': string
+  'Type': string
+  'Bedrag': string
+  'Status': string
+  'Betaald op': string
+}
+
+interface Payment {
+  klantRef: string
+  bedrag: number
+  datum: Date
+  status: string
 }
 
 function parseCSV<T>(csv: string): T[] {
@@ -159,6 +184,26 @@ function parseDate(dateStr: string): Date | null {
   return new Date(year, month, day)
 }
 
+// Parse ISO date format (YYYY-MM-DD)
+function parseDateISO(dateStr: string): Date | null {
+  if (!dateStr) return null
+
+  // Format: "2026-01-10" or "2026-01-10 14:30:00"
+  const parts = dateStr.split(' ')
+  const dateParts = parts[0].split('-')
+
+  if (dateParts.length !== 3) return null
+
+  const year = parseInt(dateParts[0], 10)
+  const month = parseInt(dateParts[1], 10) - 1
+  const day = parseInt(dateParts[2], 10)
+
+  // Sanity check
+  if (year < 2000 || year > 2030) return null
+
+  return new Date(year, month, day)
+}
+
 function calculateRiskScore(
   laatsteCheckIn: Date | null,
   checkIns30Dagen: number,
@@ -230,18 +275,22 @@ function calculateRiskScore(
 }
 
 export async function fetchMembers(): Promise<Member[]> {
-  // Fetch both CSVs
-  const [membersResponse, checkInsResponse] = await Promise.all([
-    fetch(MEMBERS_CSV_URL, { next: { revalidate: 300 } }), // Cache 5 min
-    fetch(CHECKINS_CSV_URL, { next: { revalidate: 300 } })
+  // Fetch all CSVs with cache-busting timestamp
+  const cacheBuster = `&_t=${Date.now()}`
+  const [membersResponse, checkInsResponse, paymentsResponse] = await Promise.all([
+    fetch(MEMBERS_CSV_URL + cacheBuster, { cache: 'no-store' }),
+    fetch(CHECKINS_CSV_URL + cacheBuster, { cache: 'no-store' }),
+    fetch(PAYMENTS_CSV_URL + cacheBuster, { cache: 'no-store' })
   ])
 
   const membersCSV = await membersResponse.text()
   const checkInsCSV = await checkInsResponse.text()
+  const paymentsCSV = await paymentsResponse.text()
 
   // Parse CSVs
   const rawMembers = parseCSV<RawMemberRow>(membersCSV)
   const rawCheckIns = parseCSV<RawCheckInRow>(checkInsCSV)
+  const rawPayments = parseCSV<RawPaymentRow>(paymentsCSV)
 
   // Parse check-ins met datum
   const checkIns: CheckIn[] = rawCheckIns
@@ -251,6 +300,34 @@ export async function fetchMembers(): Promise<Member[]> {
       datum: parseDate(row['start_datetime'])
     }))
     .filter(ci => ci.datum !== null) as CheckIn[]
+
+  // Parse betalingen - alleen betaalde/completed orders
+  const payments: Payment[] = rawPayments
+    .map(row => {
+      // Parse bedrag (format: "81" or "74,31")
+      const bedragStr = row['Bedrag']?.replace(',', '.') || '0'
+      const bedrag = parseFloat(bedragStr) || 0
+
+      // Parse datum (format: "2026-01-10" or from Betaald op)
+      const datumStr = row['Betaald op'] || row['Orderdatum'] || ''
+      const datum = parseDateISO(datumStr)
+
+      return {
+        klantRef: row['Klant ref.']?.trim() || '',
+        bedrag,
+        datum: datum!,
+        status: row['Status']?.toLowerCase().trim() || ''
+      }
+    })
+    .filter(p => p.klantRef && p.datum && (p.status === 'paid' || p.status === 'completed'))
+
+  // Groepeer betalingen per klant
+  const paymentsByKlant = new Map<string, Payment[]>()
+  for (const payment of payments) {
+    const existing = paymentsByKlant.get(payment.klantRef) || []
+    existing.push(payment)
+    paymentsByKlant.set(payment.klantRef, existing)
+  }
 
   // Groepeer leden op Klant ref. (voor dubbele producten)
   const memberMap = new Map<string, Member>()
@@ -289,7 +366,10 @@ export async function fetchMembers(): Promise<Member[]> {
         checkIns30Dagen: 0,
         checkIns90Dagen: 0,
         riskScore: 0,
-        riskLevel: 'low'
+        riskLevel: 'low',
+        ltv: 0,
+        aantalBetalingen: 0,
+        laatsteBetaling: null
       })
     }
   }
@@ -335,11 +415,24 @@ export async function fetchMembers(): Promise<Member[]> {
     )
     member.riskScore = risk.score
     member.riskLevel = risk.level
+
+    // Bereken LTV (Lifetime Value) uit betalingen
+    const memberPayments = paymentsByKlant.get(member.klantRef) || []
+    if (memberPayments.length > 0) {
+      member.ltv = memberPayments.reduce((sum, p) => sum + p.bedrag, 0)
+      member.aantalBetalingen = memberPayments.length
+      // Sorteer op datum (nieuwste eerst) voor laatste betaling
+      const sortedPayments = memberPayments.sort((a, b) =>
+        b.datum.getTime() - a.datum.getTime()
+      )
+      member.laatsteBetaling = sortedPayments[0].datum
+    }
   }
 
   // Filter alleen actieve leden en sorteer op risk score
+  // Case-insensitive check voor status
   const members = Array.from(memberMap.values())
-    .filter(m => m.status === 'Actief')
+    .filter(m => m.status.toLowerCase() === 'actief')
     .sort((a, b) => b.riskScore - a.riskScore)
 
   return members
@@ -355,10 +448,18 @@ export async function getStats() {
     ? (members.reduce((sum, m) => sum + m.checkIns30Dagen, 0) / members.length / 4.3).toFixed(1)
     : '0'
 
+  // LTV stats
+  const totalLTV = members.reduce((sum, m) => sum + m.ltv, 0)
+  const avgLTV = members.length > 0 ? totalLTV / members.length : 0
+  const membersWithPayments = members.filter(m => m.ltv > 0).length
+
   return {
     totalMembers,
     atRisk,
     criticalRisk,
-    avgCheckIns: parseFloat(avgCheckIns)
+    avgCheckIns: parseFloat(avgCheckIns),
+    totalLTV: Math.round(totalLTV),
+    avgLTV: Math.round(avgLTV),
+    membersWithPayments
   }
 }

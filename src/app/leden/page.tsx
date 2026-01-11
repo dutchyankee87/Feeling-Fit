@@ -28,6 +28,9 @@ interface Member {
   checkIns90Dagen: number
   riskScore: number
   riskLevel: 'low' | 'medium' | 'high' | 'critical'
+  ltv: number
+  aantalBetalingen: number
+  laatsteBetaling: string | null
 }
 
 interface TableMember {
@@ -44,6 +47,8 @@ interface TableMember {
   checkIns90Dagen: number
   actiefSinds: string
   totaalTarief: number
+  ltv: number
+  aantalBetalingen: number
 }
 
 const ITEMS_PER_PAGE = 25
@@ -91,6 +96,8 @@ export default function LedenPage() {
             checkIns90Dagen: m.checkIns90Dagen,
             actiefSinds: actiefSinds ? actiefSinds.toLocaleDateString('nl-NL') : 'Onbekend',
             totaalTarief: m.totaalTarief,
+            ltv: m.ltv || 0,
+            aantalBetalingen: m.aantalBetalingen || 0,
           }
         })
 
@@ -260,6 +267,9 @@ export default function LedenPage() {
                       Risico
                     </th>
                     <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
+                      LTV
+                    </th>
+                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
                       Acties
                     </th>
                   </tr>
@@ -274,12 +284,13 @@ export default function LedenPage() {
                         <td className="px-4 py-3"><div className="h-4 bg-slate-200 rounded w-20" /></td>
                         <td className="px-4 py-3"><div className="h-4 bg-slate-200 rounded w-12" /></td>
                         <td className="px-4 py-3"><div className="h-4 bg-slate-200 rounded w-16" /></td>
+                        <td className="px-4 py-3"><div className="h-4 bg-slate-200 rounded w-16" /></td>
                         <td className="px-4 py-3"><div className="h-4 bg-slate-200 rounded w-20" /></td>
                       </tr>
                     ))
                   ) : paginatedMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                         {activeFilters > 0
                           ? 'Geen leden gevonden met huidige filters'
                           : 'Geen leden gevonden'}
@@ -347,6 +358,16 @@ export default function LedenPage() {
                             </Badge>
                             <span className="text-xs text-slate-400">{member.riskScore}</span>
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-slate-900">
+                            {member.ltv > 0 ? `€${Math.round(member.ltv)}` : '-'}
+                          </div>
+                          {member.aantalBetalingen > 0 && (
+                            <div className="text-xs text-slate-400">
+                              {member.aantalBetalingen} betaling{member.aantalBetalingen !== 1 ? 'en' : ''}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">

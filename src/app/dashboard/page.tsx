@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Users, UserX, AlertCircle, Clock } from 'lucide-react'
+import { Users, UserX, AlertCircle, Clock, Euro } from 'lucide-react'
 
 // Components
 import { Header } from '@/components/dashboard/Header'
@@ -89,6 +89,8 @@ export default function Dashboard() {
     atRisk: 0,
     criticalRisk: 0,
     avgCheckIns: 0,
+    totalLTV: 0,
+    avgLTV: 0,
   })
 
   // Filter state
@@ -240,9 +242,10 @@ export default function Dashboard() {
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
       >
         {/* Stats Grid */}
-        <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           {loading ? (
             <>
+              <SkeletonStatsCard />
               <SkeletonStatsCard />
               <SkeletonStatsCard />
               <SkeletonStatsCard />
@@ -277,6 +280,13 @@ export default function Dashboard() {
                 icon={Clock}
                 variant="success"
                 delay={0.3}
+              />
+              <StatsCard
+                title="Gem. LTV"
+                value={`€${stats.avgLTV}`}
+                icon={Euro}
+                variant="default"
+                delay={0.4}
               />
             </>
           )}
