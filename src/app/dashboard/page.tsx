@@ -96,7 +96,7 @@ export default function Dashboard() {
   // Filter state
   const [searchQuery, setSearchQuery] = useState('')
   const [riskFilter, setRiskFilter] = useState('')
-  const [visitFilter, setVisitFilter] = useState('')
+  const [visitFilter, setVisitFilter] = useState('visited')
   const [sortBy, setSortBy] = useState('riskScore-desc')
 
   // Fetch data
@@ -132,9 +132,9 @@ export default function Dashboard() {
         setRiskMembers(transformedMembers)
         setStats(data.data.stats)
 
-        // Generate actions
+        // Generate actions (only for members who have visited at least once)
         const generatedActions: Action[] = transformedMembers
-          .filter((m) => m.riskLevel === 'critical' || m.riskLevel === 'high')
+          .filter((m) => (m.riskLevel === 'critical' || m.riskLevel === 'high') && m.daysSinceLastVisit < 900)
           .slice(0, 5)
           .map((m, i) => ({
             id: `action-${i}`,
