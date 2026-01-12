@@ -15,8 +15,8 @@ interface SearchFilterProps {
   onRiskFilterChange: (value: string) => void
   visitFilter: string
   onVisitFilterChange: (value: string) => void
-  sortBy: string
-  onSortChange: (value: string) => void
+  sortBy?: string
+  onSortChange?: (value: string) => void
   activeFilters?: number
   onClearFilters?: () => void
 }
@@ -109,12 +109,14 @@ export function SearchFilter({
           className="w-40"
         />
 
-        <Select
-          value={sortBy}
-          onChange={(e) => onSortChange(e.target.value)}
-          options={sortOptions}
-          className="w-52"
-        />
+        {sortBy !== undefined && onSortChange && (
+          <Select
+            value={sortBy}
+            onChange={(e) => onSortChange(e.target.value)}
+            options={sortOptions}
+            className="w-52"
+          />
+        )}
 
         {activeFilters > 0 && (
           <button

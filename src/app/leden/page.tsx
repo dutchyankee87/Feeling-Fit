@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Users, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Users, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 
 // Components
 import { Header } from '@/components/dashboard/Header'
@@ -63,7 +63,10 @@ export default function LedenPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [riskFilter, setRiskFilter] = useState('')
   const [visitFilter, setVisitFilter] = useState('')
-  const [sortBy, setSortBy] = useState('name-asc')
+
+  // Column sorting state
+  const [sortColumn, setSortColumn] = useState<string>('name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -143,24 +146,39 @@ export default function LedenPage() {
       result = result.filter((m) => m.daysSinceLastVisit < 900)
     }
 
-    // Sorting
-    const [field, direction] = sortBy.split('-')
+    // Sorting by column
     result.sort((a, b) => {
       let comparison = 0
-      if (field === 'riskScore') {
-        comparison = a.riskScore - b.riskScore
-      } else if (field === 'daysSince') {
-        comparison = a.daysSinceLastVisit - b.daysSinceLastVisit
-      } else if (field === 'name') {
-        comparison = a.name.localeCompare(b.name)
-      } else if (field === 'checkIns') {
-        comparison = a.checkIns30Dagen - b.checkIns30Dagen
+      switch (sortColumn) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name)
+          break
+        case 'daysSince':
+          comparison = a.daysSinceLastVisit - b.daysSinceLastVisit
+          break
+        case 'checkIns':
+          comparison = a.checkIns30Dagen - b.checkIns30Dagen
+          break
+        case 'riskScore':
+          comparison = a.riskScore - b.riskScore
+          break
+        case 'ltv':
+          comparison = a.ltv - b.ltv
+          break
+        case 'aantalBetalingen':
+          comparison = a.aantalBetalingen - b.aantalBetalingen
+          break
+        case 'actiefSinds':
+          comparison = a.actiefSinds.localeCompare(b.actiefSinds)
+          break
+        default:
+          comparison = 0
       }
-      return direction === 'desc' ? -comparison : comparison
+      return sortDirection === 'desc' ? -comparison : comparison
     })
 
     return result
-  }, [members, searchQuery, riskFilter, visitFilter, sortBy])
+  }, [members, searchQuery, riskFilter, visitFilter, sortColumn, sortDirection])
 
   // Pagination
   const totalPages = Math.ceil(filteredMembers.length / ITEMS_PER_PAGE)
@@ -172,7 +190,27 @@ export default function LedenPage() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, riskFilter, visitFilter, sortBy])
+  }, [searchQuery, riskFilter, visitFilter, sortColumn, sortDirection])
+
+  // Handle column header click for sorting
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  // Sort indicator component
+  const SortIndicator = ({ column }: { column: string }) => {
+    if (sortColumn !== column) {
+      return <ChevronsUpDown className="h-3.5 w-3.5 text-slate-400" />
+    }
+    return sortDirection === 'asc'
+      ? <ChevronUp className="h-3.5 w-3.5 text-[var(--primary)]" />
+      : <ChevronDown className="h-3.5 w-3.5 text-[var(--primary)]" />
+  }
 
   // Count active filters
   const activeFilters = [searchQuery, riskFilter, visitFilter].filter(Boolean).length
@@ -181,7 +219,8 @@ export default function LedenPage() {
     setSearchQuery('')
     setRiskFilter('')
     setVisitFilter('')
-    setSortBy('name-asc')
+    setSortColumn('name')
+    setSortDirection('asc')
   }
 
   const formatDaysSince = (days: number) => {
@@ -230,8 +269,6 @@ export default function LedenPage() {
             onRiskFilterChange={setRiskFilter}
             visitFilter={visitFilter}
             onVisitFilterChange={setVisitFilter}
-            sortBy={sortBy}
-            onSortChange={setSortBy}
             activeFilters={activeFilters}
             onClearFilters={clearFilters}
           />
@@ -248,8 +285,14 @@ export default function LedenPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-slate-50">
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
-                      Naam
+                    <th
+                      className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                      onClick={() => handleSort('name')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Naam
+                        <SortIndicator column="name" />
+                      </div>
                     </th>
                     <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
                       Contact
@@ -257,17 +300,41 @@ export default function LedenPage() {
                     <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
                       Product(en)
                     </th>
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
-                      Laatste bezoek
+                    <th
+                      className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                      onClick={() => handleSort('daysSince')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Laatste bezoek
+                        <SortIndicator column="daysSince" />
+                      </div>
                     </th>
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
-                      Check-ins (30d)
+                    <th
+                      className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                      onClick={() => handleSort('checkIns')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Check-ins (30d)
+                        <SortIndicator column="checkIns" />
+                      </div>
                     </th>
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
-                      Risico
+                    <th
+                      className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                      onClick={() => handleSort('riskScore')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Risico
+                        <SortIndicator column="riskScore" />
+                      </div>
                     </th>
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
-                      LTV
+                    <th
+                      className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                      onClick={() => handleSort('ltv')}
+                    >
+                      <div className="flex items-center gap-1">
+                        LTV
+                        <SortIndicator column="ltv" />
+                      </div>
                     </th>
                     <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-4 py-3">
                       Acties

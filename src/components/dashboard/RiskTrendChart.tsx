@@ -130,15 +130,16 @@ export function RiskTrendChart({ data }: RiskTrendChartProps) {
                     fontSize: '12px',
                   }}
                   labelStyle={{ fontWeight: 600, marginBottom: '4px' }}
+                  itemSorter={() => 0}
                 />
                 <Area
                   type="monotone"
-                  dataKey="medium"
+                  dataKey="critical"
                   stackId="1"
-                  stroke="var(--risk-medium)"
-                  fill="url(#mediumGradient)"
+                  stroke="var(--risk-critical)"
+                  fill="url(#criticalGradient)"
                   strokeWidth={2}
-                  name="Medium"
+                  name="Kritiek"
                 />
                 <Area
                   type="monotone"
@@ -151,12 +152,12 @@ export function RiskTrendChart({ data }: RiskTrendChartProps) {
                 />
                 <Area
                   type="monotone"
-                  dataKey="critical"
+                  dataKey="medium"
                   stackId="1"
-                  stroke="var(--risk-critical)"
-                  fill="url(#criticalGradient)"
+                  stroke="var(--risk-medium)"
+                  fill="url(#mediumGradient)"
                   strokeWidth={2}
-                  name="Kritiek"
+                  name="Medium"
                 />
               </AreaChart>
             </ResponsiveContainer>
