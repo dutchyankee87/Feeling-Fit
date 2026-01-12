@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Users, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { Users, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, Info } from 'lucide-react'
 
 // Components
 import { Header } from '@/components/dashboard/Header'
@@ -12,6 +12,12 @@ import { Badge, getRiskLabel } from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
 
 // Types
+interface RiskFactor {
+  name: string
+  label: string
+  points: number
+}
+
 interface Member {
   klantRef: string
   voornaam: string
@@ -28,6 +34,7 @@ interface Member {
   checkIns90Dagen: number
   riskScore: number
   riskLevel: 'low' | 'medium' | 'high' | 'critical'
+  riskFactors: RiskFactor[]
   ltv: number
   aantalBetalingen: number
   laatsteBetaling: string | null
@@ -41,6 +48,7 @@ interface TableMember {
   lastCheckIn: string
   riskLevel: 'critical' | 'high' | 'medium' | 'low'
   riskScore: number
+  riskFactors: RiskFactor[]
   daysSinceLastVisit: number
   producten: string[]
   checkIns30Dagen: number
@@ -93,6 +101,7 @@ export default function LedenPage() {
             lastCheckIn: lastCheckIn ? lastCheckIn.toLocaleDateString('nl-NL') : 'Nooit',
             riskLevel: m.riskLevel,
             riskScore: m.riskScore,
+            riskFactors: m.riskFactors || [],
             daysSinceLastVisit,
             producten: m.producten,
             checkIns30Dagen: m.checkIns30Dagen,
@@ -415,7 +424,7 @@ export default function LedenPage() {
                           <div className="text-xs text-slate-400">{member.checkIns90Dagen} (90d)</div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 group relative">
                             <Badge
                               variant={member.riskLevel}
                               size="sm"
@@ -423,7 +432,31 @@ export default function LedenPage() {
                             >
                               {getRiskLabel(member.riskLevel)}
                             </Badge>
-                            <span className="text-xs text-slate-400">{member.riskScore}</span>
+                            <button className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600">
+                              {member.riskScore}
+                              {member.riskFactors.length > 0 && (
+                                <Info className="h-3 w-3" />
+                              )}
+                            </button>
+                            {member.riskFactors.length > 0 && (
+                              <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block">
+                                <div className="bg-slate-800 text-white text-xs rounded-lg shadow-lg p-3 min-w-[220px]">
+                                  <div className="font-medium mb-2">Risicofactoren:</div>
+                                  <ul className="space-y-1.5">
+                                    {member.riskFactors.map((factor, i) => (
+                                      <li key={i} className="flex justify-between gap-3">
+                                        <span className="text-slate-300">{factor.label}</span>
+                                        <span className="text-orange-400 font-medium">+{factor.points}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <div className="border-t border-slate-600 mt-2 pt-2 flex justify-between">
+                                    <span className="font-medium">Totaal</span>
+                                    <span className="font-bold text-orange-400">{member.riskScore}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3">

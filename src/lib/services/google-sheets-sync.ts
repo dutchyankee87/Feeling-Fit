@@ -2,6 +2,12 @@ const MEMBERS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyEAjR
 const CHECKINS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyEAjR7NEHc10MkPwx3KGLv99ERMftCmaqqBqeQsmTnvQJwyVu9HE7S-pbR8Yy7fNRK1CcpSQsDVvB/pub?gid=1453739890&single=true&output=csv'
 const PAYMENTS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyEAjR7NEHc10MkPwx3KGLv99ERMftCmaqqBqeQsmTnvQJwyVu9HE7S-pbR8Yy7fNRK1CcpSQsDVvB/pub?gid=1399037059&single=true&output=csv'
 
+export interface RiskFactor {
+  name: string
+  label: string
+  points: number
+}
+
 export interface Member {
   klantRef: string
   voornaam: string
@@ -18,6 +24,7 @@ export interface Member {
   checkIns90Dagen: number
   riskScore: number
   riskLevel: 'low' | 'medium' | 'high' | 'critical'
+  riskFactors: RiskFactor[]
   // LTV (Lifetime Value) fields
   ltv: number // Totaal betaald sinds 1-1-2024
   aantalBetalingen: number
@@ -208,8 +215,9 @@ function calculateRiskScore(
   laatsteCheckIn: Date | null,
   checkIns30Dagen: number,
   actiefSinds: Date | null
-): { score: number; level: 'low' | 'medium' | 'high' | 'critical' } {
+): { score: number; level: 'low' | 'medium' | 'high' | 'critical'; factors: RiskFactor[] } {
   let score = 0
+  const factors: RiskFactor[] = []
 
   const now = new Date()
 
@@ -220,31 +228,41 @@ function calculateRiskScore(
     )
 
     if (daysSinceLastCheckIn > 180) {
-      score += 50  // 6+ maanden
+      score += 50
+      factors.push({ name: 'no_checkin_180', label: `${daysSinceLastCheckIn} dagen niet geweest`, points: 50 })
     } else if (daysSinceLastCheckIn > 90) {
-      score += 40  // 3-6 maanden
+      score += 40
+      factors.push({ name: 'no_checkin_90', label: `${daysSinceLastCheckIn} dagen niet geweest`, points: 40 })
     } else if (daysSinceLastCheckIn > 60) {
-      score += 35  // 2-3 maanden
+      score += 35
+      factors.push({ name: 'no_checkin_60', label: `${daysSinceLastCheckIn} dagen niet geweest`, points: 35 })
     } else if (daysSinceLastCheckIn > 30) {
-      score += 25  // 1-2 maanden
+      score += 25
+      factors.push({ name: 'no_checkin_30', label: `${daysSinceLastCheckIn} dagen niet geweest`, points: 25 })
     } else if (daysSinceLastCheckIn > 14) {
-      score += 15  // 2-4 weken
+      score += 15
+      factors.push({ name: 'no_checkin_14', label: `${daysSinceLastCheckIn} dagen niet geweest`, points: 15 })
     } else if (daysSinceLastCheckIn > 7) {
-      score += 8   // 1-2 weken
+      score += 8
+      factors.push({ name: 'no_checkin_7', label: `${daysSinceLastCheckIn} dagen niet geweest`, points: 8 })
     }
     // Recent (< 7 dagen) = 0 punten
   } else {
     // Geen check-ins ooit - hoogste risico
     score += 55
+    factors.push({ name: 'never_visited', label: 'Nog nooit geweest', points: 55 })
   }
 
   // Factor 2: Check-in frequentie laatste 30 dagen (secondary factor)
   if (checkIns30Dagen === 0) {
     score += 20
+    factors.push({ name: 'zero_checkins_30d', label: '0 check-ins afgelopen 30 dagen', points: 20 })
   } else if (checkIns30Dagen < 2) {
     score += 12
+    factors.push({ name: 'low_checkins_30d', label: `Slechts ${checkIns30Dagen} check-in afgelopen 30 dagen`, points: 12 })
   } else if (checkIns30Dagen < 4) {
     score += 5
+    factors.push({ name: 'medium_checkins_30d', label: `${checkIns30Dagen} check-ins afgelopen 30 dagen`, points: 5 })
   }
   // 4+ check-ins in 30 dagen = 0 punten (goed!)
 
@@ -256,6 +274,7 @@ function calculateRiskScore(
 
     if (daysSinceJoin < 90 && checkIns30Dagen < 3) {
       score += 15
+      factors.push({ name: 'new_member_low_activity', label: `Nieuw lid (${daysSinceJoin} dagen) met weinig activiteit`, points: 15 })
     }
   }
 
@@ -271,7 +290,7 @@ function calculateRiskScore(
     level = 'low'
   }
 
-  return { score: Math.min(score, 100), level }
+  return { score: Math.min(score, 100), level, factors }
 }
 
 export async function fetchMembers(): Promise<Member[]> {
@@ -367,6 +386,7 @@ export async function fetchMembers(): Promise<Member[]> {
         checkIns90Dagen: 0,
         riskScore: 0,
         riskLevel: 'low',
+        riskFactors: [],
         ltv: 0,
         aantalBetalingen: 0,
         laatsteBetaling: null
@@ -415,6 +435,7 @@ export async function fetchMembers(): Promise<Member[]> {
     )
     member.riskScore = risk.score
     member.riskLevel = risk.level
+    member.riskFactors = risk.factors
 
     // Bereken LTV (Lifetime Value) uit betalingen
     const memberPayments = paymentsByKlant.get(member.klantRef) || []
