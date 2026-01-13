@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchMembers, getStats } from '@/lib/services/google-sheets-sync'
+import { fetchMembersFromTrainin, getStatsFromTrainin } from '@/lib/services/trainin-sync'
 
 export const revalidate = 300 // Cache for 5 minutes
 
@@ -9,8 +10,12 @@ export async function GET(request: Request) {
     const filter = searchParams.get('filter') // 'all', 'at-risk', 'critical'
     const limit = parseInt(searchParams.get('limit') || '50', 10)
 
-    const members = await fetchMembers()
-    const stats = await getStats()
+    // Use Trainin API if enabled, otherwise fallback to Google Sheets
+    const useTrainin = process.env.USE_TRAININ_API === 'true'
+
+    const [members, stats] = useTrainin
+      ? [await fetchMembersFromTrainin(), await getStatsFromTrainin()]
+      : [await fetchMembers(), await getStats()]
 
     let filteredMembers = members
 
