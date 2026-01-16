@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Activity, RefreshCw, AlertTriangle, Users } from 'lucide-react'
+import { Activity, RefreshCw, AlertTriangle, Users, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -19,6 +19,7 @@ export function Header({ lastSync, loading, onSync }: HeaderProps) {
   const navItems = [
     { href: '/dashboard', label: 'Churn Risico', icon: AlertTriangle },
     { href: '/leden', label: 'Ledenlijst', icon: Users },
+    { href: '/inzichten', label: 'MT Inzichten', icon: BarChart3 },
   ]
 
   return (

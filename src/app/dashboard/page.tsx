@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Users, UserX, AlertCircle, Clock, Euro } from 'lucide-react'
+import { Users, UserX, AlertCircle, Clock, Euro, Moon, Activity } from 'lucide-react'
 
 // Components
 import { Header } from '@/components/dashboard/Header'
@@ -11,6 +11,7 @@ import { ActionItem } from '@/components/dashboard/ActionItem'
 import { MemberList } from '@/components/dashboard/MemberList'
 import { SearchFilter } from '@/components/dashboard/SearchFilter'
 import { RiskTrendChart } from '@/components/dashboard/RiskTrendChart'
+import { BezoekdichtheidCompact } from '@/components/dashboard/BezoekdichtheidCompact'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card'
 import { SkeletonStatsCard } from '@/components/ui/Skeleton'
 
@@ -57,6 +58,19 @@ interface Action {
   dueTime: string
 }
 
+interface BezoekdichtheidBreakdown {
+  superActief: { count: number; pct: number }
+  actief: { count: number; pct: number }
+  risico: { count: number; pct: number }
+  slapend: { count: number; pct: number }
+}
+
+interface InsightsData {
+  slapendeLedenPercentage: number
+  slapendeLedenCount: number
+  bezoekdichtheid: BezoekdichtheidBreakdown
+}
+
 // Animation variants
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -92,6 +106,7 @@ export default function Dashboard() {
     totalLTV: 0,
     avgLTV: 0,
   })
+  const [insights, setInsights] = useState<InsightsData | null>(null)
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('')
@@ -103,8 +118,19 @@ export default function Dashboard() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/members?filter=all&limit=300')
-      const data = await response.json()
+      // Fetch members and insights in parallel
+      const [membersResponse, insightsResponse] = await Promise.all([
+        fetch('/api/members?filter=all&limit=300'),
+        fetch('/api/insights')
+      ])
+
+      const data = await membersResponse.json()
+      const insightsData = await insightsResponse.json()
+
+      // Set insights if available
+      if (insightsData.success) {
+        setInsights(insightsData.data)
+      }
 
       if (data.success) {
         const members: Member[] = data.data.members
@@ -242,9 +268,10 @@ export default function Dashboard() {
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
       >
         {/* Stats Grid */}
-        <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
           {loading ? (
             <>
+              <SkeletonStatsCard />
               <SkeletonStatsCard />
               <SkeletonStatsCard />
               <SkeletonStatsCard />
@@ -288,9 +315,34 @@ export default function Dashboard() {
                 variant="default"
                 delay={0.4}
               />
+              <StatsCard
+                title="Slapende Leden"
+                value={insights ? `${insights.slapendeLedenPercentage}%` : '-'}
+                icon={Moon}
+                variant={insights && insights.slapendeLedenPercentage > 15 ? 'warning' : 'default'}
+                delay={0.5}
+              />
             </>
           )}
         </motion.div>
+
+        {/* Bezoekdichtheid Card */}
+        {!loading && insights && (
+          <motion.div variants={itemVariants} className="mb-6">
+            <Card hover={false} padding="sm">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-[var(--primary-50)] rounded-lg">
+                  <Activity className="h-5 w-5 text-[var(--primary)]" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900">Bezoekdichtheid (12 weken)</h3>
+                  <p className="text-sm text-slate-500">Activiteitsniveau van alle leden</p>
+                </div>
+              </div>
+              <BezoekdichtheidCompact data={insights.bezoekdichtheid} />
+            </Card>
+          </motion.div>
+        )}
 
         {/* Search & Filters */}
         <motion.div variants={itemVariants} className="mb-6">
