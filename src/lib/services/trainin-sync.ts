@@ -638,11 +638,13 @@ function calculateSlapendeLedenMetrics(members: Member[]): { percentage: number;
 function calculateCheckInDistribution(
   sessions: TraininSession[]
 ): { byHour: CheckInHourData[]; byDay: CheckInDayData[] } {
-  const hourCounts = new Map<number, number[]>() // hour -> counts per day
-  const dayCounts = new Map<string, number[]>() // day name -> counts per week
-
   const dayNames = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za']
-  const dateCheckIns = new Map<string, { hour: number; dayOfWeek: number }>()
+
+  // Track total check-ins per unique date-hour and date-day combinations
+  // Key: "2025-01-15-9" (date + hour) -> total check-ins that hour
+  const hourTotals = new Map<string, number>()
+  // Key: "2025-01-15" (date) -> total check-ins that day
+  const dayTotals = new Map<string, { dayOfWeek: number; count: number }>()
 
   // Collect all check-ins with their timestamps
   for (const session of sessions) {
@@ -653,8 +655,10 @@ function calculateCheckInDistribution(
 
     const hour = sessionDate.getHours()
     const dayOfWeek = sessionDate.getDay()
+    const dateKey = sessionDate.toISOString().split('T')[0]
+    const hourKey = `${dateKey}-${hour}`
 
-    // Count present bookings
+    // Count present bookings in this session
     let presentCount = 0
     for (const booking of session.bookings) {
       if (booking.present && booking.status !== 'canceled') {
@@ -663,35 +667,49 @@ function calculateCheckInDistribution(
     }
 
     if (presentCount > 0) {
-      const dateKey = sessionDate.toISOString().split('T')[0]
-      const hourKey = `${dateKey}-${hour}`
+      // Add to hour totals for this specific date-hour
+      hourTotals.set(hourKey, (hourTotals.get(hourKey) || 0) + presentCount)
 
-      // Aggregate by hour
-      const existingHour = hourCounts.get(hour) || []
-      existingHour.push(presentCount)
-      hourCounts.set(hour, existingHour)
-
-      // Aggregate by day of week
-      const dayName = dayNames[dayOfWeek]
-      const existingDay = dayCounts.get(dayName) || []
-      existingDay.push(presentCount)
-      dayCounts.set(dayName, existingDay)
+      // Add to day totals for this specific date
+      const existingDay = dayTotals.get(dateKey)
+      if (existingDay) {
+        existingDay.count += presentCount
+      } else {
+        dayTotals.set(dateKey, { dayOfWeek, count: presentCount })
+      }
     }
   }
 
-  // Calculate averages per hour (6:00 - 22:00)
+  // Calculate average check-ins per hour across all days
+  // Group hourTotals by hour (0-23), then average across dates
+  const hourAggregates = new Map<number, number[]>()
+  for (const [hourKey, count] of hourTotals.entries()) {
+    const hour = parseInt(hourKey.split('-').pop() || '0')
+    const existing = hourAggregates.get(hour) || []
+    existing.push(count)
+    hourAggregates.set(hour, existing)
+  }
+
   const byHour: CheckInHourData[] = []
   for (let hour = 6; hour <= 22; hour++) {
-    const counts = hourCounts.get(hour) || []
+    const counts = hourAggregates.get(hour) || []
     const avg = counts.length > 0
       ? Math.round((counts.reduce((a, b) => a + b, 0) / counts.length) * 10) / 10
       : 0
     byHour.push({ hour, avg })
   }
 
-  // Calculate averages per day
-  const byDay: CheckInDayData[] = dayNames.map(day => {
-    const counts = dayCounts.get(day) || []
+  // Calculate average check-ins per day of week
+  // Group dayTotals by day of week, then average
+  const dayAggregates = new Map<number, number[]>()
+  for (const [, data] of dayTotals.entries()) {
+    const existing = dayAggregates.get(data.dayOfWeek) || []
+    existing.push(data.count)
+    dayAggregates.set(data.dayOfWeek, existing)
+  }
+
+  const byDay: CheckInDayData[] = dayNames.map((day, index) => {
+    const counts = dayAggregates.get(index) || []
     const avg = counts.length > 0
       ? Math.round((counts.reduce((a, b) => a + b, 0) / counts.length) * 10) / 10
       : 0
