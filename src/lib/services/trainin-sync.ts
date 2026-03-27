@@ -1,4 +1,5 @@
 import { Member, RiskFactor } from './google-sheets-sync'
+import { STAFF_KLANT_REFS } from '@/lib/constants'
 
 const BASE_URL = 'https://api.trainin.app/integrations/tenant/fysiofabriek'
 
@@ -58,6 +59,10 @@ export interface MTInsights {
   checkInsByDay: CheckInDayData[]
   bezoekdichtheid: BezoekdichtheidBreakdown
   totalActiveMembers: number
+  ptClientCount: number
+  fitnessClientCount: number
+  ptRatioPercentage: number
+  kennismakingByMonth: KennismakingMonthData[]
 }
 
 // In-memory cache for API responses
@@ -369,6 +374,9 @@ async function fetchMembersFromTraininInternal(): Promise<Member[]> {
   const members: Member[] = []
 
   for (const client of clients) {
+    // Skip staff members
+    if (STAFF_KLANT_REFS.has(client.ref)) continue
+
     // Get active products from clientCreditProducts
     const activeProducts = (client.clientCreditProducts || []).filter(p =>
       p.status === 'active'
@@ -474,6 +482,34 @@ function isKennismakingProduct(productName: string): boolean {
   return name.includes('kennismaking') || name.includes('proef')
 }
 
+function isPTProduct(productName: string): boolean {
+  return /\bpt\b|personal training/i.test(productName)
+}
+
+function calculatePTRatio(clients: TraininClient[]): { ptCount: number; fitnessCount: number; ptRatioPercentage: number } {
+  let ptClients = 0
+  let fitnessClients = 0
+
+  for (const client of clients) {
+    const activeProducts = (client.clientCreditProducts || []).filter(p => p.status === 'active')
+    if (activeProducts.length === 0) continue
+
+    const hasPT = activeProducts.some(p => isPTProduct(p.name || p.creditProductName || ''))
+    if (hasPT) {
+      ptClients++
+    } else {
+      fitnessClients++
+    }
+  }
+
+  const total = ptClients + fitnessClients
+  return {
+    ptCount: ptClients,
+    fitnessCount: fitnessClients,
+    ptRatioPercentage: total > 0 ? Math.round((ptClients / total) * 100) : 0
+  }
+}
+
 function calculateKennismakingMetrics(
   clients: TraininClient[],
   sessions: TraininSession[]
@@ -533,6 +569,100 @@ function calculateKennismakingMetrics(
       : 0,
     totalClients: totalKennismakingClients
   }
+}
+
+export interface KennismakingMonthData {
+  month: string
+  monthLabel: string
+  totalClients: number
+  totalBookings: number
+  showUpRate: number
+  conversionRate: number
+}
+
+function calculateKennismakingMetricsByMonth(
+  clients: TraininClient[],
+  sessions: TraininSession[]
+): KennismakingMonthData[] {
+  const monthLabels: Record<number, string> = {
+    0: 'Jan', 1: 'Feb', 2: 'Mrt', 3: 'Apr', 4: 'Mei', 5: 'Jun',
+    6: 'Jul', 7: 'Aug', 8: 'Sep', 9: 'Okt', 10: 'Nov', 11: 'Dec'
+  }
+
+  // Group kennismaking clients by month (based on product validFrom)
+  const monthData = new Map<string, { clients: Set<string>; convertedClients: Set<string> }>()
+  const clientToMonth = new Map<string, string>()
+
+  for (const client of clients) {
+    const products = client.clientCreditProducts || []
+    let kennismakingMonth: string | null = null
+    let hasOtherProduct = false
+
+    for (const product of products) {
+      const name = product.name || product.creditProductName || ''
+      if (isKennismakingProduct(name)) {
+        const validFrom = parseDate(product.validFrom) || parseDate(client.createdAt)
+        if (validFrom) {
+          kennismakingMonth = `${validFrom.getFullYear()}-${String(validFrom.getMonth() + 1).padStart(2, '0')}`
+        }
+      } else {
+        hasOtherProduct = true
+      }
+    }
+
+    if (kennismakingMonth) {
+      const existing = monthData.get(kennismakingMonth) || { clients: new Set(), convertedClients: new Set() }
+      existing.clients.add(client.ref)
+      if (hasOtherProduct) existing.convertedClients.add(client.ref)
+      monthData.set(kennismakingMonth, existing)
+      clientToMonth.set(client.ref, kennismakingMonth)
+    }
+  }
+
+  // Count bookings per month (based on which month the client belongs to)
+  const bookingsByMonth = new Map<string, { total: number; present: number }>()
+  for (const session of sessions) {
+    if (session.status === 'canceled' || !session.bookings) continue
+    for (const booking of session.bookings) {
+      if (booking.status === 'canceled') continue
+      const clientRef = booking.client?.ref
+      if (!clientRef) continue
+      const month = clientToMonth.get(clientRef)
+      if (!month) continue
+
+      const existing = bookingsByMonth.get(month) || { total: 0, present: 0 }
+      existing.total++
+      if (booking.present) existing.present++
+      bookingsByMonth.set(month, existing)
+    }
+  }
+
+  // Generate last 12 months
+  const now = new Date()
+  const results: KennismakingMonthData[] = []
+
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const data = monthData.get(key)
+    const bookings = bookingsByMonth.get(key)
+
+    const totalClients = data?.clients.size || 0
+    const convertedClients = data?.convertedClients.size || 0
+    const totalBookings = bookings?.total || 0
+    const presentBookings = bookings?.present || 0
+
+    results.push({
+      month: key,
+      monthLabel: `${monthLabels[d.getMonth()]} ${d.getFullYear()}`,
+      totalClients,
+      totalBookings,
+      showUpRate: totalBookings > 0 ? Math.round((presentBookings / totalBookings) * 100) : 0,
+      conversionRate: totalClients > 0 ? Math.round((convertedClients / totalClients) * 100) : 0,
+    })
+  }
+
+  return results
 }
 
 function calculateChurnByProduct(clients: TraininClient[]): ProductChurnRate[] {
@@ -658,10 +788,10 @@ function calculateCheckInDistribution(
     const dateKey = sessionDate.toISOString().split('T')[0]
     const hourKey = `${dateKey}-${hour}`
 
-    // Count present bookings in this session
+    // Count present bookings in this session (excluding staff)
     let presentCount = 0
     for (const booking of session.bookings) {
-      if (booking.present && booking.status !== 'canceled') {
+      if (booking.present && booking.status !== 'canceled' && !STAFF_KLANT_REFS.has(booking.client?.ref || '')) {
         presentCount++
       }
     }
@@ -794,24 +924,29 @@ export async function getMTInsights(): Promise<MTInsights> {
   console.log('[Trainin] Calculating MT insights...')
 
   const now = new Date()
-  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+  const thirteenMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 13, now.getDate())
   const ltvStartDate = '2024-01-01'
 
-  // Fetch all required data
+  // Fetch all required data (13 months of sessions for monthly kennismaking funnel)
   const [clients, sessions, orders, members] = await Promise.all([
     fetchFromTrainin<TraininClient>('/clients', { include: 'clientProducts' }),
     fetchFromTrainin<TraininSession>('/sessions', {
       include: 'bookings',
-      from: ninetyDaysAgo.toISOString().split('T')[0]
+      from: thirteenMonthsAgo.toISOString().split('T')[0]
     }),
     fetchFromTrainin<TraininOrder>('/orders', { orderDateFrom: ltvStartDate }),
     fetchMembersFromTrainin()
   ])
 
+  // Filter staff from client-level calculations
+  const filteredClients = clients.filter(c => !STAFF_KLANT_REFS.has(c.ref))
+
   // Calculate all metrics
-  const kennismakingMetrics = calculateKennismakingMetrics(clients, sessions)
-  const churnByProduct = calculateChurnByProduct(clients)
-  const contractDuration = calculateAvgContractDuration(clients)
+  const kennismakingMetrics = calculateKennismakingMetrics(filteredClients, sessions)
+  const kennismakingByMonth = calculateKennismakingMetricsByMonth(filteredClients, sessions)
+  const churnByProduct = calculateChurnByProduct(filteredClients)
+  const contractDuration = calculateAvgContractDuration(filteredClients)
+  const ptRatio = calculatePTRatio(filteredClients)
   const slapendeMetrics = calculateSlapendeLedenMetrics(members)
   const checkInDistribution = calculateCheckInDistribution(sessions)
   const bezoekdichtheid = calculateBezoekdichtheid(members, sessions)
@@ -834,7 +969,11 @@ export async function getMTInsights(): Promise<MTInsights> {
     checkInsByHour: checkInDistribution.byHour,
     checkInsByDay: checkInDistribution.byDay,
     bezoekdichtheid,
-    totalActiveMembers: members.length
+    totalActiveMembers: members.length,
+    ptClientCount: ptRatio.ptCount,
+    fitnessClientCount: ptRatio.fitnessCount,
+    ptRatioPercentage: ptRatio.ptRatioPercentage,
+    kennismakingByMonth,
   }
 
   // Update cache

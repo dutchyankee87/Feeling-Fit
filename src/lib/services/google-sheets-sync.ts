@@ -1,3 +1,5 @@
+import { STAFF_KLANT_REFS } from '@/lib/constants'
+
 const MEMBERS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyEAjR7NEHc10MkPwx3KGLv99ERMftCmaqqBqeQsmTnvQJwyVu9HE7S-pbR8Yy7fNRK1CcpSQsDVvB/pub?output=csv'
 const CHECKINS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyEAjR7NEHc10MkPwx3KGLv99ERMftCmaqqBqeQsmTnvQJwyVu9HE7S-pbR8Yy7fNRK1CcpSQsDVvB/pub?gid=1453739890&single=true&output=csv'
 const PAYMENTS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSyEAjR7NEHc10MkPwx3KGLv99ERMftCmaqqBqeQsmTnvQJwyVu9HE7S-pbR8Yy7fNRK1CcpSQsDVvB/pub?gid=1399037059&single=true&output=csv'
@@ -354,6 +356,7 @@ export async function fetchMembers(): Promise<Member[]> {
   for (const row of rawMembers) {
     const klantRef = row['Klant ref.']?.trim()
     if (!klantRef) continue
+    if (STAFF_KLANT_REFS.has(klantRef)) continue
 
     const existing = memberMap.get(klantRef)
     const tarief = parseFloat(row['Tarief']?.replace(',', '.') || '0') || 0

@@ -53,6 +53,15 @@ interface CheckInDayData {
   avg: number
 }
 
+interface KennismakingMonthData {
+  month: string
+  monthLabel: string
+  totalClients: number
+  totalBookings: number
+  showUpRate: number
+  conversionRate: number
+}
+
 interface MTInsights {
   kennismakingShowUpRate: number
   kennismakingBookings: number
@@ -68,6 +77,10 @@ interface MTInsights {
   checkInsByDay: CheckInDayData[]
   bezoekdichtheid: BezoekdichtheidBreakdown
   totalActiveMembers: number
+  ptClientCount: number
+  fitnessClientCount: number
+  ptRatioPercentage: number
+  kennismakingByMonth: KennismakingMonthData[]
 }
 
 // Animation variants
@@ -194,6 +207,36 @@ export default function InzichtenPage() {
               )}
             </motion.div>
 
+            {/* PT vs Fitness Verdeling */}
+            {!loading && insights && (
+              <motion.div variants={itemVariants} className="mb-8">
+                <Card hover={false} padding="md">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-slate-900">PT vs Fitness Verdeling</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Verhouding Personal Training vs regulier fitness
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-6 text-center">
+                      <div>
+                        <p className="text-2xl font-bold text-[var(--primary)]">{insights.ptClientCount}</p>
+                        <p className="text-xs text-slate-500">PT Klanten</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-slate-900">{insights.fitnessClientCount}</p>
+                        <p className="text-xs text-slate-500">Fitness Klanten</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-emerald-600">{insights.ptRatioPercentage}%</p>
+                        <p className="text-xs text-slate-500">PT Ratio</p>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
             {/* Kennismaking Details */}
             {!loading && insights && (
               <motion.div variants={itemVariants} className="mb-8">
@@ -221,6 +264,50 @@ export default function InzichtenPage() {
                         <p className="text-xs text-slate-500">Conversie</p>
                       </div>
                     </div>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* Kennismaking Funnel per Maand */}
+            {!loading && insights && insights.kennismakingByMonth && (
+              <motion.div variants={itemVariants} className="mb-8">
+                <Card hover={false} padding="none">
+                  <CardHeader className="px-6 py-4">
+                    <CardTitle>Kennismaking Funnel per Maand</CardTitle>
+                    <CardDescription>Laatste 12 maanden</CardDescription>
+                  </CardHeader>
+                  <div className="px-6 pb-6 overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-slate-500 border-b">
+                          <th className="pb-2 pr-4">Maand</th>
+                          <th className="pb-2 pr-4 text-right">Klanten</th>
+                          <th className="pb-2 pr-4 text-right">Boekingen</th>
+                          <th className="pb-2 pr-4 text-right">Show-up</th>
+                          <th className="pb-2 text-right">Conversie</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {insights.kennismakingByMonth.map(m => (
+                          <tr key={m.month} className="border-b border-slate-100">
+                            <td className="py-2 pr-4 font-medium">{m.monthLabel}</td>
+                            <td className="py-2 pr-4 text-right">{m.totalClients}</td>
+                            <td className="py-2 pr-4 text-right">{m.totalBookings}</td>
+                            <td className="py-2 pr-4 text-right">
+                              <span className={m.showUpRate >= 70 ? 'text-emerald-600 font-medium' : m.showUpRate > 0 && m.showUpRate < 50 ? 'text-red-500 font-medium' : ''}>
+                                {m.totalBookings > 0 ? `${m.showUpRate}%` : '-'}
+                              </span>
+                            </td>
+                            <td className="py-2 text-right">
+                              <span className={m.conversionRate >= 50 ? 'text-emerald-600 font-medium' : m.conversionRate > 0 && m.conversionRate < 30 ? 'text-red-500 font-medium' : ''}>
+                                {m.totalClients > 0 ? `${m.conversionRate}%` : '-'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </Card>
               </motion.div>
