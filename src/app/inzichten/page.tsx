@@ -62,11 +62,20 @@ interface KennismakingMonthData {
   conversionRate: number
 }
 
+interface KennismakingFunnelData {
+  showUpRate: number
+  totalBookings: number
+  conversionRate: number
+  totalClients: number
+}
+
 interface MTInsights {
   kennismakingShowUpRate: number
   kennismakingBookings: number
   kennismakingToLidConversion: number
   kennismakingClientsTotal: number
+  kennismakingRecent: KennismakingFunnelData
+  kennismakingAllTime: KennismakingFunnelData
   avgLTV: number
   totalLTV: number
   churnRateByProduct: ProductChurnRate[]
@@ -237,30 +246,62 @@ export default function InzichtenPage() {
               </motion.div>
             )}
 
-            {/* Kennismaking Details */}
+            {/* Kennismaking Details — Laatste 13 maanden */}
+            {!loading && insights && (
+              <motion.div variants={itemVariants} className="mb-4">
+                <Card hover={false} padding="md">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-slate-900">Kennismaking Funnel — Laatste 13 maanden</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        {insights.kennismakingRecent.totalClients} kennismakingen · boekingen binnen het trial-venster (tot conversie of max 28 dagen na start)
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-6 text-center">
+                      <div>
+                        <p className="text-2xl font-bold text-slate-900">{insights.kennismakingRecent.totalBookings}</p>
+                        <p className="text-xs text-slate-500">Boekingen</p>
+                      </div>
+                      <ArrowRight className="h-5 w-5 text-slate-300" />
+                      <div>
+                        <p className="text-2xl font-bold text-emerald-600">{insights.kennismakingRecent.showUpRate}%</p>
+                        <p className="text-xs text-slate-500">Show-up</p>
+                      </div>
+                      <ArrowRight className="h-5 w-5 text-slate-300" />
+                      <div>
+                        <p className="text-2xl font-bold text-[var(--primary)]">{insights.kennismakingRecent.conversionRate}%</p>
+                        <p className="text-xs text-slate-500">Conversie</p>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* Kennismaking Details — All-time */}
             {!loading && insights && (
               <motion.div variants={itemVariants} className="mb-8">
                 <Card hover={false} padding="md">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <div className="flex-1">
-                      <h3 className="font-semibold text-slate-900">Kennismaking Funnel</h3>
+                      <h3 className="font-semibold text-slate-700">Kennismaking Funnel — All-time</h3>
                       <p className="text-sm text-slate-500 mt-1">
-                        {insights.kennismakingClientsTotal} klanten met kennismaking product
+                        {insights.kennismakingAllTime.totalClients} kennismakingen totaal (alle jaren)
                       </p>
                     </div>
                     <div className="flex items-center gap-6 text-center">
                       <div>
-                        <p className="text-2xl font-bold text-slate-900">{insights.kennismakingBookings}</p>
+                        <p className="text-xl font-semibold text-slate-700">{insights.kennismakingAllTime.totalBookings}</p>
                         <p className="text-xs text-slate-500">Boekingen</p>
                       </div>
                       <ArrowRight className="h-5 w-5 text-slate-300" />
                       <div>
-                        <p className="text-2xl font-bold text-emerald-600">{insights.kennismakingShowUpRate}%</p>
+                        <p className="text-xl font-semibold text-emerald-700">{insights.kennismakingAllTime.showUpRate}%</p>
                         <p className="text-xs text-slate-500">Show-up</p>
                       </div>
                       <ArrowRight className="h-5 w-5 text-slate-300" />
                       <div>
-                        <p className="text-2xl font-bold text-[var(--primary)]">{insights.kennismakingToLidConversion}%</p>
+                        <p className="text-xl font-semibold text-[var(--primary)]">{insights.kennismakingAllTime.conversionRate}%</p>
                         <p className="text-xs text-slate-500">Conversie</p>
                       </div>
                     </div>
