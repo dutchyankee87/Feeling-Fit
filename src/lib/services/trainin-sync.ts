@@ -44,11 +44,20 @@ export interface BezoekdichtheidBreakdown {
   slapend: BezoekdichtheidCategory       // 4+ weeks geen bezoek
 }
 
+export interface KennismakingFunnelData {
+  showUpRate: number
+  totalBookings: number
+  conversionRate: number
+  totalClients: number
+}
+
 export interface MTInsights {
   kennismakingShowUpRate: number
   kennismakingBookings: number
   kennismakingToLidConversion: number
   kennismakingClientsTotal: number
+  kennismakingRecent: KennismakingFunnelData
+  kennismakingAllTime: KennismakingFunnelData
   avgLTV: number
   totalLTV: number
   churnRateByProduct: ProductChurnRate[]
@@ -510,64 +519,121 @@ function calculatePTRatio(clients: TraininClient[]): { ptCount: number; fitnessC
   }
 }
 
-function calculateKennismakingMetrics(
-  clients: TraininClient[],
-  sessions: TraininSession[]
-): { showUpRate: number; totalBookings: number; conversionRate: number; totalClients: number } {
-  // Find all clients who have/had a kennismaking product
-  const kennismakingClients = new Set<string>()
-  const clientsWithOtherProducts = new Set<string>()
+// A single kennismaking instance: one client's one kennismaking product, with the
+// exact window during which their bookings still count as "trial" bookings.
+// Once the client converts (starts any non-kennismaking product), the window closes.
+interface KennismakingPeriod {
+  clientRef: string
+  from: Date
+  to: Date
+  converted: boolean
+}
+
+const KENNISMAKING_WINDOW_DAYS = 28
+
+function buildKennismakingPeriods(clients: TraininClient[]): KennismakingPeriod[] {
+  const periods: KennismakingPeriod[] = []
 
   for (const client of clients) {
     const products = client.clientCreditProducts || []
-    let hasKennismaking = false
-    let hasOtherProduct = false
+
+    const otherProductStarts: Date[] = []
+    for (const product of products) {
+      const name = product.name || product.creditProductName || ''
+      if (isKennismakingProduct(name)) continue
+      const otherFrom = parseDate(product.validFrom)
+      if (otherFrom) otherProductStarts.push(otherFrom)
+    }
+    otherProductStarts.sort((a, b) => a.getTime() - b.getTime())
 
     for (const product of products) {
-      if (isKennismakingProduct(product.name || product.creditProductName || '')) {
-        hasKennismaking = true
-      } else {
-        hasOtherProduct = true
-      }
-    }
+      const name = product.name || product.creditProductName || ''
+      if (!isKennismakingProduct(name)) continue
 
-    if (hasKennismaking) {
-      kennismakingClients.add(client.ref)
-      if (hasOtherProduct) {
-        clientsWithOtherProducts.add(client.ref)
-      }
+      const from = parseDate(product.validFrom) || parseDate(client.createdAt)
+      if (!from) continue
+
+      const candidates: Date[] = []
+      const validUntil = parseDate(product.validUntil)
+      if (validUntil) candidates.push(validUntil)
+
+      // First non-kennismaking product that starts on/after this trial: the conversion moment.
+      const conversionDate = otherProductStarts.find(d => d.getTime() >= from.getTime())
+      if (conversionDate) candidates.push(conversionDate)
+
+      candidates.push(new Date(from.getTime() + KENNISMAKING_WINDOW_DAYS * 24 * 60 * 60 * 1000))
+
+      const to = candidates.reduce((min, d) => (d.getTime() < min.getTime() ? d : min))
+
+      periods.push({
+        clientRef: client.ref,
+        from,
+        to,
+        converted: !!conversionDate,
+      })
     }
   }
 
-  // Calculate show-up rate from session bookings for kennismaking clients
+  return periods
+}
+
+function calculateFunnelForPeriods(
+  periods: KennismakingPeriod[],
+  sessions: TraininSession[]
+): KennismakingFunnelData {
+  const totalPeriods = periods.length
+  const convertedPeriods = periods.filter(p => p.converted).length
+
+  const periodsByClient = new Map<string, KennismakingPeriod[]>()
+  for (const p of periods) {
+    const arr = periodsByClient.get(p.clientRef) || []
+    arr.push(p)
+    periodsByClient.set(p.clientRef, arr)
+  }
+
   let totalBookings = 0
   let presentBookings = 0
 
   for (const session of sessions) {
     if (session.status === 'canceled' || !session.bookings) continue
+    const sessionDate = parseDate(session.start)
+    if (!sessionDate) continue
 
     for (const booking of session.bookings) {
       if (booking.status === 'canceled') continue
       const clientRef = booking.client?.ref
-      if (!clientRef || !kennismakingClients.has(clientRef)) continue
+      if (!clientRef) continue
+
+      const clientPeriods = periodsByClient.get(clientRef)
+      if (!clientPeriods) continue
+
+      const inPeriod = clientPeriods.some(
+        p => sessionDate.getTime() >= p.from.getTime() && sessionDate.getTime() <= p.to.getTime()
+      )
+      if (!inPeriod) continue
 
       totalBookings++
-      if (booking.present) {
-        presentBookings++
-      }
+      if (booking.present) presentBookings++
     }
   }
-
-  const totalKennismakingClients = kennismakingClients.size
-  const convertedClients = clientsWithOtherProducts.size
 
   return {
     showUpRate: totalBookings > 0 ? Math.round((presentBookings / totalBookings) * 100) : 0,
     totalBookings,
-    conversionRate: totalKennismakingClients > 0
-      ? Math.round((convertedClients / totalKennismakingClients) * 100)
-      : 0,
-    totalClients: totalKennismakingClients
+    conversionRate: totalPeriods > 0 ? Math.round((convertedPeriods / totalPeriods) * 100) : 0,
+    totalClients: totalPeriods,
+  }
+}
+
+function calculateKennismakingMetrics(
+  periods: KennismakingPeriod[],
+  sessions: TraininSession[],
+  recentCutoff: Date
+): { recent: KennismakingFunnelData; allTime: KennismakingFunnelData } {
+  const recentPeriods = periods.filter(p => p.from.getTime() >= recentCutoff.getTime())
+  return {
+    recent: calculateFunnelForPeriods(recentPeriods, sessions),
+    allTime: calculateFunnelForPeriods(periods, sessions),
   }
 }
 
@@ -581,7 +647,7 @@ export interface KennismakingMonthData {
 }
 
 function calculateKennismakingMetricsByMonth(
-  clients: TraininClient[],
+  periods: KennismakingPeriod[],
   sessions: TraininSession[]
 ): KennismakingMonthData[] {
   const monthLabels: Record<number, string> = {
@@ -589,76 +655,30 @@ function calculateKennismakingMetricsByMonth(
     6: 'Jul', 7: 'Aug', 8: 'Sep', 9: 'Okt', 10: 'Nov', 11: 'Dec'
   }
 
-  // Group kennismaking clients by month (based on product validFrom)
-  const monthData = new Map<string, { clients: Set<string>; convertedClients: Set<string> }>()
-  const clientToMonth = new Map<string, string>()
-
-  for (const client of clients) {
-    const products = client.clientCreditProducts || []
-    let kennismakingMonth: string | null = null
-    let hasOtherProduct = false
-
-    for (const product of products) {
-      const name = product.name || product.creditProductName || ''
-      if (isKennismakingProduct(name)) {
-        const validFrom = parseDate(product.validFrom) || parseDate(client.createdAt)
-        if (validFrom) {
-          kennismakingMonth = `${validFrom.getFullYear()}-${String(validFrom.getMonth() + 1).padStart(2, '0')}`
-        }
-      } else {
-        hasOtherProduct = true
-      }
-    }
-
-    if (kennismakingMonth) {
-      const existing = monthData.get(kennismakingMonth) || { clients: new Set(), convertedClients: new Set() }
-      existing.clients.add(client.ref)
-      if (hasOtherProduct) existing.convertedClients.add(client.ref)
-      monthData.set(kennismakingMonth, existing)
-      clientToMonth.set(client.ref, kennismakingMonth)
-    }
+  const periodsByMonth = new Map<string, KennismakingPeriod[]>()
+  for (const p of periods) {
+    const key = `${p.from.getFullYear()}-${String(p.from.getMonth() + 1).padStart(2, '0')}`
+    const arr = periodsByMonth.get(key) || []
+    arr.push(p)
+    periodsByMonth.set(key, arr)
   }
 
-  // Count bookings per month (based on which month the client belongs to)
-  const bookingsByMonth = new Map<string, { total: number; present: number }>()
-  for (const session of sessions) {
-    if (session.status === 'canceled' || !session.bookings) continue
-    for (const booking of session.bookings) {
-      if (booking.status === 'canceled') continue
-      const clientRef = booking.client?.ref
-      if (!clientRef) continue
-      const month = clientToMonth.get(clientRef)
-      if (!month) continue
-
-      const existing = bookingsByMonth.get(month) || { total: 0, present: 0 }
-      existing.total++
-      if (booking.present) existing.present++
-      bookingsByMonth.set(month, existing)
-    }
-  }
-
-  // Generate last 12 months
   const now = new Date()
   const results: KennismakingMonthData[] = []
 
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const data = monthData.get(key)
-    const bookings = bookingsByMonth.get(key)
-
-    const totalClients = data?.clients.size || 0
-    const convertedClients = data?.convertedClients.size || 0
-    const totalBookings = bookings?.total || 0
-    const presentBookings = bookings?.present || 0
+    const monthPeriods = periodsByMonth.get(key) || []
+    const funnel = calculateFunnelForPeriods(monthPeriods, sessions)
 
     results.push({
       month: key,
       monthLabel: `${monthLabels[d.getMonth()]} ${d.getFullYear()}`,
-      totalClients,
-      totalBookings,
-      showUpRate: totalBookings > 0 ? Math.round((presentBookings / totalBookings) * 100) : 0,
-      conversionRate: totalClients > 0 ? Math.round((convertedClients / totalClients) * 100) : 0,
+      totalClients: funnel.totalClients,
+      totalBookings: funnel.totalBookings,
+      showUpRate: funnel.showUpRate,
+      conversionRate: funnel.conversionRate,
     })
   }
 
@@ -942,8 +962,9 @@ export async function getMTInsights(): Promise<MTInsights> {
   const filteredClients = clients.filter(c => !STAFF_KLANT_REFS.has(c.ref))
 
   // Calculate all metrics
-  const kennismakingMetrics = calculateKennismakingMetrics(filteredClients, sessions)
-  const kennismakingByMonth = calculateKennismakingMetricsByMonth(filteredClients, sessions)
+  const kennismakingPeriods = buildKennismakingPeriods(filteredClients)
+  const kennismakingMetrics = calculateKennismakingMetrics(kennismakingPeriods, sessions, thirteenMonthsAgo)
+  const kennismakingByMonth = calculateKennismakingMetricsByMonth(kennismakingPeriods, sessions)
   const churnByProduct = calculateChurnByProduct(filteredClients)
   const contractDuration = calculateAvgContractDuration(filteredClients)
   const ptRatio = calculatePTRatio(filteredClients)
@@ -956,10 +977,12 @@ export async function getMTInsights(): Promise<MTInsights> {
   const avgLTV = members.length > 0 ? Math.round(totalLTV / members.length) : 0
 
   const insights: MTInsights = {
-    kennismakingShowUpRate: kennismakingMetrics.showUpRate,
-    kennismakingBookings: kennismakingMetrics.totalBookings,
-    kennismakingToLidConversion: kennismakingMetrics.conversionRate,
-    kennismakingClientsTotal: kennismakingMetrics.totalClients,
+    kennismakingShowUpRate: kennismakingMetrics.recent.showUpRate,
+    kennismakingBookings: kennismakingMetrics.recent.totalBookings,
+    kennismakingToLidConversion: kennismakingMetrics.recent.conversionRate,
+    kennismakingClientsTotal: kennismakingMetrics.recent.totalClients,
+    kennismakingRecent: kennismakingMetrics.recent,
+    kennismakingAllTime: kennismakingMetrics.allTime,
     avgLTV,
     totalLTV: Math.round(totalLTV),
     churnRateByProduct: churnByProduct,
