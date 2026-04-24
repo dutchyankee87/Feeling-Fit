@@ -58,19 +58,23 @@ interface KennismakingMonthData {
   monthLabel: string
   totalClients: number
   totalBookings: number
-  showUpRate: number
+  bookedClients: number
+  bookedRate: number
+  convertedClients: number
   conversionRate: number
 }
 
 interface KennismakingFunnelData {
-  showUpRate: number
-  totalBookings: number
-  conversionRate: number
   totalClients: number
+  totalBookings: number
+  bookedClients: number
+  bookedRate: number
+  convertedClients: number
+  conversionRate: number
 }
 
 interface MTInsights {
-  kennismakingShowUpRate: number
+  kennismakingBookedRate: number
   kennismakingBookings: number
   kennismakingToLidConversion: number
   kennismakingClientsTotal: number
@@ -185,10 +189,10 @@ export default function InzichtenPage() {
               ) : insights && (
                 <>
                   <StatsCard
-                    title="Kennismaking Show-up"
-                    value={`${insights.kennismakingShowUpRate}%`}
+                    title="Kennismaking Geboekt"
+                    value={`${insights.kennismakingBookedRate}%`}
                     icon={UserCheck}
-                    variant={insights.kennismakingShowUpRate >= 70 ? 'success' : insights.kennismakingShowUpRate < 50 ? 'warning' : 'default'}
+                    variant={insights.kennismakingBookedRate >= 70 ? 'success' : insights.kennismakingBookedRate < 50 ? 'warning' : 'default'}
                     delay={0}
                   />
                   <StatsCard
@@ -254,23 +258,23 @@ export default function InzichtenPage() {
                     <div className="flex-1">
                       <h3 className="font-semibold text-slate-900">Kennismaking Funnel — Laatste 13 maanden</h3>
                       <p className="text-sm text-slate-500 mt-1">
-                        {insights.kennismakingRecent.totalClients} kennismakingen · boekingen binnen het trial-venster (tot conversie of max 28 dagen na start)
+                        Boekingen binnen het trial-venster (tot conversie of max 28 dagen na start)
                       </p>
                     </div>
                     <div className="flex items-center gap-6 text-center">
                       <div>
-                        <p className="text-2xl font-bold text-slate-900">{insights.kennismakingRecent.totalBookings}</p>
-                        <p className="text-xs text-slate-500">Boekingen</p>
+                        <p className="text-2xl font-bold text-slate-900">{insights.kennismakingRecent.totalClients}</p>
+                        <p className="text-xs text-slate-500">Kennismakingen</p>
                       </div>
                       <ArrowRight className="h-5 w-5 text-slate-300" />
                       <div>
-                        <p className="text-2xl font-bold text-emerald-600">{insights.kennismakingRecent.showUpRate}%</p>
-                        <p className="text-xs text-slate-500">Show-up</p>
+                        <p className="text-2xl font-bold text-emerald-600">{insights.kennismakingRecent.bookedRate}%</p>
+                        <p className="text-xs text-slate-500">Geboekt ({insights.kennismakingRecent.bookedClients})</p>
                       </div>
                       <ArrowRight className="h-5 w-5 text-slate-300" />
                       <div>
                         <p className="text-2xl font-bold text-[var(--primary)]">{insights.kennismakingRecent.conversionRate}%</p>
-                        <p className="text-xs text-slate-500">Conversie</p>
+                        <p className="text-xs text-slate-500">Conversie ({insights.kennismakingRecent.convertedClients})</p>
                       </div>
                     </div>
                   </div>
@@ -286,23 +290,23 @@ export default function InzichtenPage() {
                     <div className="flex-1">
                       <h3 className="font-semibold text-slate-700">Kennismaking Funnel — All-time</h3>
                       <p className="text-sm text-slate-500 mt-1">
-                        {insights.kennismakingAllTime.totalClients} kennismakingen totaal (alle jaren)
+                        Alle kennismakingen sinds begin (boekingen alleen zichtbaar vanaf 13 maanden geleden)
                       </p>
                     </div>
                     <div className="flex items-center gap-6 text-center">
                       <div>
-                        <p className="text-xl font-semibold text-slate-700">{insights.kennismakingAllTime.totalBookings}</p>
-                        <p className="text-xs text-slate-500">Boekingen</p>
+                        <p className="text-xl font-semibold text-slate-700">{insights.kennismakingAllTime.totalClients}</p>
+                        <p className="text-xs text-slate-500">Kennismakingen</p>
                       </div>
                       <ArrowRight className="h-5 w-5 text-slate-300" />
                       <div>
-                        <p className="text-xl font-semibold text-emerald-700">{insights.kennismakingAllTime.showUpRate}%</p>
-                        <p className="text-xs text-slate-500">Show-up</p>
+                        <p className="text-xl font-semibold text-emerald-700">{insights.kennismakingAllTime.bookedRate}%</p>
+                        <p className="text-xs text-slate-500">Geboekt ({insights.kennismakingAllTime.bookedClients})</p>
                       </div>
                       <ArrowRight className="h-5 w-5 text-slate-300" />
                       <div>
                         <p className="text-xl font-semibold text-[var(--primary)]">{insights.kennismakingAllTime.conversionRate}%</p>
-                        <p className="text-xs text-slate-500">Conversie</p>
+                        <p className="text-xs text-slate-500">Conversie ({insights.kennismakingAllTime.convertedClients})</p>
                       </div>
                     </div>
                   </div>
@@ -323,10 +327,11 @@ export default function InzichtenPage() {
                       <thead>
                         <tr className="text-left text-slate-500 border-b">
                           <th className="pb-2 pr-4">Maand</th>
-                          <th className="pb-2 pr-4 text-right">Klanten</th>
-                          <th className="pb-2 pr-4 text-right">Boekingen</th>
-                          <th className="pb-2 pr-4 text-right">Show-up</th>
-                          <th className="pb-2 text-right">Conversie</th>
+                          <th className="pb-2 pr-4 text-right">Kennismakingen</th>
+                          <th className="pb-2 pr-4 text-right">Geboekt</th>
+                          <th className="pb-2 pr-4 text-right">% Geboekt</th>
+                          <th className="pb-2 pr-4 text-right">Geconverteerd</th>
+                          <th className="pb-2 text-right">% Conversie</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -334,15 +339,16 @@ export default function InzichtenPage() {
                           <tr key={m.month} className="border-b border-slate-100">
                             <td className="py-2 pr-4 font-medium">{m.monthLabel}</td>
                             <td className="py-2 pr-4 text-right">{m.totalClients}</td>
-                            <td className="py-2 pr-4 text-right">{m.totalBookings}</td>
+                            <td className="py-2 pr-4 text-right">{m.bookedClients}</td>
                             <td className="py-2 pr-4 text-right">
-                              <span className={m.showUpRate >= 70 ? 'text-emerald-600 font-medium' : m.showUpRate > 0 && m.showUpRate < 50 ? 'text-red-500 font-medium' : ''}>
-                                {m.totalBookings > 0 ? `${m.showUpRate}%` : '-'}
+                              <span className={m.bookedRate >= 70 ? 'text-emerald-600 font-medium' : m.bookedRate > 0 && m.bookedRate < 50 ? 'text-red-500 font-medium' : ''}>
+                                {m.totalClients > 0 ? `${m.bookedRate}%` : '-'}
                               </span>
                             </td>
+                            <td className="py-2 pr-4 text-right">{m.convertedClients}</td>
                             <td className="py-2 text-right">
                               <span className={m.conversionRate >= 50 ? 'text-emerald-600 font-medium' : m.conversionRate > 0 && m.conversionRate < 30 ? 'text-red-500 font-medium' : ''}>
-                                {m.totalClients > 0 ? `${m.conversionRate}%` : '-'}
+                                {m.bookedClients > 0 ? `${m.conversionRate}%` : '-'}
                               </span>
                             </td>
                           </tr>
