@@ -45,14 +45,16 @@ export interface BezoekdichtheidBreakdown {
 }
 
 export interface KennismakingFunnelData {
-  showUpRate: number
-  totalBookings: number
-  conversionRate: number
   totalClients: number
+  totalBookings: number
+  bookedClients: number
+  bookedRate: number
+  convertedClients: number
+  conversionRate: number
 }
 
 export interface MTInsights {
-  kennismakingShowUpRate: number
+  kennismakingBookedRate: number
   kennismakingBookings: number
   kennismakingToLidConversion: number
   kennismakingClientsTotal: number
@@ -577,12 +579,15 @@ function buildKennismakingPeriods(clients: TraininClient[]): KennismakingPeriod[
   return periods
 }
 
+function periodKey(p: KennismakingPeriod): string {
+  return `${p.clientRef}:${p.from.toISOString()}`
+}
+
 function calculateFunnelForPeriods(
   periods: KennismakingPeriod[],
   sessions: TraininSession[]
 ): KennismakingFunnelData {
   const totalPeriods = periods.length
-  const convertedPeriods = periods.filter(p => p.converted).length
 
   const periodsByClient = new Map<string, KennismakingPeriod[]>()
   for (const p of periods) {
@@ -591,8 +596,8 @@ function calculateFunnelForPeriods(
     periodsByClient.set(p.clientRef, arr)
   }
 
+  const periodHasBooking = new Set<string>()
   let totalBookings = 0
-  let presentBookings = 0
 
   for (const session of sessions) {
     if (session.status === 'canceled' || !session.bookings) continue
@@ -607,21 +612,35 @@ function calculateFunnelForPeriods(
       const clientPeriods = periodsByClient.get(clientRef)
       if (!clientPeriods) continue
 
-      const inPeriod = clientPeriods.some(
-        p => sessionDate.getTime() >= p.from.getTime() && sessionDate.getTime() <= p.to.getTime()
-      )
-      if (!inPeriod) continue
+      for (const p of clientPeriods) {
+        if (
+          sessionDate.getTime() >= p.from.getTime() &&
+          sessionDate.getTime() <= p.to.getTime()
+        ) {
+          periodHasBooking.add(periodKey(p))
+          totalBookings++
+          break
+        }
+      }
+    }
+  }
 
-      totalBookings++
-      if (booking.present) presentBookings++
+  let bookedClients = 0
+  let convertedClients = 0
+  for (const p of periods) {
+    if (periodHasBooking.has(periodKey(p))) {
+      bookedClients++
+      if (p.converted) convertedClients++
     }
   }
 
   return {
-    showUpRate: totalBookings > 0 ? Math.round((presentBookings / totalBookings) * 100) : 0,
-    totalBookings,
-    conversionRate: totalPeriods > 0 ? Math.round((convertedPeriods / totalPeriods) * 100) : 0,
     totalClients: totalPeriods,
+    totalBookings,
+    bookedClients,
+    bookedRate: totalPeriods > 0 ? Math.round((bookedClients / totalPeriods) * 100) : 0,
+    convertedClients,
+    conversionRate: bookedClients > 0 ? Math.round((convertedClients / bookedClients) * 100) : 0,
   }
 }
 
@@ -642,7 +661,9 @@ export interface KennismakingMonthData {
   monthLabel: string
   totalClients: number
   totalBookings: number
-  showUpRate: number
+  bookedClients: number
+  bookedRate: number
+  convertedClients: number
   conversionRate: number
 }
 
@@ -677,7 +698,9 @@ function calculateKennismakingMetricsByMonth(
       monthLabel: `${monthLabels[d.getMonth()]} ${d.getFullYear()}`,
       totalClients: funnel.totalClients,
       totalBookings: funnel.totalBookings,
-      showUpRate: funnel.showUpRate,
+      bookedClients: funnel.bookedClients,
+      bookedRate: funnel.bookedRate,
+      convertedClients: funnel.convertedClients,
       conversionRate: funnel.conversionRate,
     })
   }
@@ -977,7 +1000,7 @@ export async function getMTInsights(): Promise<MTInsights> {
   const avgLTV = members.length > 0 ? Math.round(totalLTV / members.length) : 0
 
   const insights: MTInsights = {
-    kennismakingShowUpRate: kennismakingMetrics.recent.showUpRate,
+    kennismakingBookedRate: kennismakingMetrics.recent.bookedRate,
     kennismakingBookings: kennismakingMetrics.recent.totalBookings,
     kennismakingToLidConversion: kennismakingMetrics.recent.conversionRate,
     kennismakingClientsTotal: kennismakingMetrics.recent.totalClients,
