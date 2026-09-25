@@ -1,5 +1,10 @@
 import { Member, RiskFactor } from './google-sheets-sync'
-import { STAFF_KLANT_REFS } from '@/lib/constants'
+import {
+  STAFF_KLANT_REFS,
+  PT_TRAINER_WEEKLY_CAPACITY,
+  EXCLUDED_SUBSCRIPTION_PRODUCTS,
+  SEPARATE_SUBSCRIPTION_PRODUCTS,
+} from '@/lib/constants'
 
 const BASE_URL = 'https://api.trainin.app/integrations/tenant/fysiofabriek'
 
@@ -53,6 +58,40 @@ export interface KennismakingFunnelData {
   conversionRate: number
 }
 
+export interface PTTrainerCapacity {
+  trainer: string
+  weeklyCapacity: number | null // null = niet ingesteld in PT_TRAINER_WEEKLY_CAPACITY
+  capacity: number
+  booked: number
+  free: number
+}
+
+export interface PTCapacity {
+  periodStart: string // YYYY-MM-DD
+  periodEnd: string   // YYYY-MM-DD (laatste dag van de maand)
+  remainingDays: number
+  ptClients: number
+  entitledCredits: number
+  bookedCredits: number
+  openCredits: number
+  totalSlots: number
+  bookedSlots: number
+  freeSlots: number
+  gap: number             // openCredits - freeSlots
+  coverage: number | null // freeSlots / openCredits in %, null als er geen open credits zijn
+  byTrainer: PTTrainerCapacity[]
+  unconfiguredTrainers: string[]
+}
+
+export interface ActiveSubscriptionsMonth {
+  month: string      // YYYY-MM
+  monthLabel: string
+  total: number
+  growthPct: number | null
+  byProduct: Record<string, number>
+  separate: Record<string, number> // bijv. Check-up, buiten het totaal
+}
+
 export interface MTInsights {
   kennismakingBookedRate: number
   kennismakingBookings: number
@@ -74,6 +113,8 @@ export interface MTInsights {
   fitnessClientCount: number
   ptRatioPercentage: number
   kennismakingByMonth: KennismakingMonthData[]
+  ptCapacity: PTCapacity
+  activeSubscriptionsByMonth: ActiveSubscriptionsMonth[]
 }
 
 // In-memory cache for API responses
@@ -130,12 +171,21 @@ interface TraininClientProduct {
   validUntil?: string
   price: number
   creditProductName?: string
+  quantity?: number
+  creditsLeft?: number
+  pausedFrom?: string | null
+  pausedUntil?: string | null
 }
 
 interface TraininSession {
   ref: string
+  name?: string // "Personal Training", "Indoor Bootcamp", ...
   start: string // "2025-01-01 14:00:00"
-  status: string
+  end?: string
+  status: string // 'accepted', 'canceled'
+  instructors?: { ref: string; name: string }[]
+  spotsFree?: number
+  spotsMax?: number
   bookings?: TraininBooking[]
 }
 
@@ -143,6 +193,7 @@ interface TraininBooking {
   ref: string
   status: string // 'reserved', 'canceled', etc.
   present: boolean
+  creditsPerPerson?: number
   client: {
     ref: string
     name: string
@@ -521,6 +572,186 @@ function calculatePTRatio(clients: TraininClient[]): { ptCount: number; fitnessC
   }
 }
 
+const MONTH_LABELS = ['Jan', 'Feb', 'Mrt', 'Apr', 'Mei', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
+
+// Local YYYY-MM-DD (Trainin dates are local "YYYY-MM-DD HH:mm:ss" strings)
+function toDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function isPTSession(session: TraininSession): boolean {
+  return /personal training/i.test(session.name || '')
+}
+
+// "Personal Training 4x per 4 weken" -> 4
+function getPTCreditsPer4Weeks(productName: string): number {
+  const match = productName.match(/(\d+)x per 4 weken/i)
+  return match ? parseInt(match[1], 10) : 0
+}
+
+function isPausedForWindow(product: TraininClientProduct, windowStart: string, windowEnd: string): boolean {
+  if (product.status === 'paused') return true
+  if (!product.pausedFrom) return false
+  const pausedFrom = product.pausedFrom.substring(0, 10)
+  const pausedUntil = product.pausedUntil?.substring(0, 10)
+  return pausedFrom <= windowStart && (!pausedUntil || pausedUntil >= windowEnd)
+}
+
+// Open PT credits for the rest of the calendar month vs free PT slots of the trainers.
+// Subscriptions are "Nx per 4 weken" and Trainin always reports creditsLeft = 0 for them,
+// so the entitlement is pro-rated: N × remainingDays / 28, minus PT sessions already booked.
+function calculatePTCapacity(
+  clients: TraininClient[],
+  sessions: TraininSession[],
+  now: Date
+): PTCapacity {
+  const periodStart = toDateKey(now)
+  const periodEnd = toDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+  const remainingDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1
+
+  const ptSessionsInWindow = sessions.filter(s => {
+    const date = s.start.substring(0, 10)
+    return s.status !== 'canceled' && isPTSession(s) && date >= periodStart && date <= periodEnd
+  })
+
+  // Booked credits per client within the window
+  const bookedByClient = new Map<string, number>()
+  for (const session of ptSessionsInWindow) {
+    for (const booking of session.bookings || []) {
+      if (booking.status !== 'accepted') continue
+      const credits = booking.creditsPerPerson ?? 1
+      bookedByClient.set(booking.client.ref, (bookedByClient.get(booking.client.ref) || 0) + credits)
+    }
+  }
+
+  let ptClients = 0
+  let entitledCredits = 0
+  let bookedCredits = 0
+  let openCredits = 0
+
+  for (const client of clients) {
+    let entitlement = 0
+    for (const product of client.clientCreditProducts || []) {
+      if (product.status !== 'active' && product.status !== 'paused') continue
+      const name = product.name || product.creditProductName || ''
+      if (!isPTProduct(name)) continue
+
+      // Losse PT-producten (intake, extra credits) hebben wel een echt saldo
+      entitlement += product.creditsLeft || 0
+
+      const perFourWeeks = getPTCreditsPer4Weeks(name)
+      if (perFourWeeks === 0 || isPausedForWindow(product, periodStart, periodEnd)) continue
+      entitlement += perFourWeeks * (product.quantity || 1) * remainingDays / 28
+    }
+
+    if (entitlement === 0) continue
+    const booked = bookedByClient.get(client.ref) || 0
+    ptClients++
+    entitledCredits += entitlement
+    bookedCredits += booked
+    openCredits += Math.max(entitlement - booked, 0)
+  }
+
+  // Booked slots per trainer: PT sessions with at least one accepted booking
+  const bookedByTrainer = new Map<string, number>()
+  for (const session of ptSessionsInWindow) {
+    const hasBooking = (session.bookings || []).some(b => b.status === 'accepted')
+    if (!hasBooking) continue
+    for (const instructor of session.instructors || []) {
+      bookedByTrainer.set(instructor.name, (bookedByTrainer.get(instructor.name) || 0) + 1)
+    }
+  }
+
+  const trainers = new Set([...Object.keys(PT_TRAINER_WEEKLY_CAPACITY), ...bookedByTrainer.keys()])
+  const byTrainer: PTTrainerCapacity[] = [...trainers].map(trainer => {
+    const weeklyCapacity = PT_TRAINER_WEEKLY_CAPACITY[trainer] || null
+    const capacity = weeklyCapacity ? Math.round(weeklyCapacity * remainingDays / 7) : 0
+    const booked = bookedByTrainer.get(trainer) || 0
+    return {
+      trainer,
+      weeklyCapacity,
+      capacity,
+      booked,
+      free: Math.max(capacity - booked, 0),
+    }
+  }).sort((a, b) => b.booked - a.booked)
+
+  const totalSlots = byTrainer.reduce((sum, t) => sum + t.capacity, 0)
+  const bookedSlots = byTrainer.reduce((sum, t) => sum + t.booked, 0)
+  const freeSlots = byTrainer.reduce((sum, t) => sum + t.free, 0)
+  const roundedOpenCredits = Math.round(openCredits)
+
+  return {
+    periodStart,
+    periodEnd,
+    remainingDays,
+    ptClients,
+    entitledCredits: Math.round(entitledCredits),
+    bookedCredits,
+    openCredits: roundedOpenCredits,
+    totalSlots,
+    bookedSlots,
+    freeSlots,
+    gap: roundedOpenCredits - freeSlots,
+    coverage: roundedOpenCredits > 0 ? Math.round((freeSlots / roundedOpenCredits) * 100) : null,
+    byTrainer,
+    unconfiguredTrainers: byTrainer.filter(t => t.weeklyCapacity === null).map(t => t.trainer),
+  }
+}
+
+// Active subscriptions on the 1st of each month (last `months` months, incl. current)
+function calculateActiveSubscriptionsByMonth(
+  clients: TraininClient[],
+  now: Date,
+  months = 12
+): ActiveSubscriptionsMonth[] {
+  const results: ActiveSubscriptionsMonth[] = []
+
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const dateKey = toDateKey(d)
+    const byProduct: Record<string, number> = {}
+    const separate: Record<string, number> = {}
+    let total = 0
+
+    for (const client of clients) {
+      for (const product of client.clientCreditProducts || []) {
+        if (product.type !== 'subscription' || product.status === 'planned') continue
+        const name = product.name || product.creditProductName || 'Onbekend'
+        if (EXCLUDED_SUBSCRIPTION_PRODUCTS.has(name) || isKennismakingProduct(name)) continue
+
+        const validFrom = product.validFrom?.substring(0, 10)
+        const validUntil = product.validUntil?.substring(0, 10)
+        if (!validFrom || validFrom > dateKey) continue
+        if (validUntil && validUntil < dateKey) continue
+
+        if (SEPARATE_SUBSCRIPTION_PRODUCTS.has(name)) {
+          separate[name] = (separate[name] || 0) + 1
+        } else {
+          byProduct[name] = (byProduct[name] || 0) + 1
+          total++
+        }
+      }
+    }
+
+    const previous = results[results.length - 1]
+    const growthPct = previous && previous.total > 0
+      ? Math.round(((total - previous.total) / previous.total) * 1000) / 10
+      : null
+
+    results.push({
+      month: dateKey.substring(0, 7),
+      monthLabel: `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`,
+      total,
+      growthPct,
+      byProduct,
+      separate,
+    })
+  }
+
+  return results
+}
+
 // A single kennismaking instance: one client's one kennismaking product, with the
 // exact window during which their bookings still count as "trial" bookings.
 // Once the client converts (starts any non-kennismaking product), the window closes.
@@ -671,11 +902,6 @@ function calculateKennismakingMetricsByMonth(
   periods: KennismakingPeriod[],
   sessions: TraininSession[]
 ): KennismakingMonthData[] {
-  const monthLabels: Record<number, string> = {
-    0: 'Jan', 1: 'Feb', 2: 'Mrt', 3: 'Apr', 4: 'Mei', 5: 'Jun',
-    6: 'Jul', 7: 'Aug', 8: 'Sep', 9: 'Okt', 10: 'Nov', 11: 'Dec'
-  }
-
   const periodsByMonth = new Map<string, KennismakingPeriod[]>()
   for (const p of periods) {
     const key = `${p.from.getFullYear()}-${String(p.from.getMonth() + 1).padStart(2, '0')}`
@@ -695,7 +921,7 @@ function calculateKennismakingMetricsByMonth(
 
     results.push({
       month: key,
-      monthLabel: `${monthLabels[d.getMonth()]} ${d.getFullYear()}`,
+      monthLabel: `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`,
       totalClients: funnel.totalClients,
       totalBookings: funnel.totalBookings,
       bookedClients: funnel.bookedClients,
@@ -991,6 +1217,8 @@ export async function getMTInsights(): Promise<MTInsights> {
   const churnByProduct = calculateChurnByProduct(filteredClients)
   const contractDuration = calculateAvgContractDuration(filteredClients)
   const ptRatio = calculatePTRatio(filteredClients)
+  const ptCapacity = calculatePTCapacity(filteredClients, sessions, now)
+  const activeSubscriptionsByMonth = calculateActiveSubscriptionsByMonth(filteredClients, now)
   const slapendeMetrics = calculateSlapendeLedenMetrics(members)
   const checkInDistribution = calculateCheckInDistribution(sessions)
   const bezoekdichtheid = calculateBezoekdichtheid(members, sessions)
@@ -1020,6 +1248,8 @@ export async function getMTInsights(): Promise<MTInsights> {
     fitnessClientCount: ptRatio.fitnessCount,
     ptRatioPercentage: ptRatio.ptRatioPercentage,
     kennismakingByMonth,
+    ptCapacity,
+    activeSubscriptionsByMonth,
   }
 
   // Update cache
