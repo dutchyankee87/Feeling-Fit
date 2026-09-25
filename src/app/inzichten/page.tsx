@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { Users, TrendingUp, Euro, Moon, UserCheck, ArrowRight } from 'lucide-react'
+import { TrendingUp, Euro, Moon, UserCheck, ArrowRight, Dumbbell, CalendarClock, Scale, Percent } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 // Components
 import { Header } from '@/components/dashboard/Header'
@@ -73,6 +74,40 @@ interface KennismakingFunnelData {
   conversionRate: number
 }
 
+interface PTTrainerCapacity {
+  trainer: string
+  weeklyCapacity: number | null
+  capacity: number
+  booked: number
+  free: number
+}
+
+interface PTCapacity {
+  periodStart: string
+  periodEnd: string
+  remainingDays: number
+  ptClients: number
+  entitledCredits: number
+  bookedCredits: number
+  openCredits: number
+  totalSlots: number
+  bookedSlots: number
+  freeSlots: number
+  gap: number
+  coverage: number | null
+  byTrainer: PTTrainerCapacity[]
+  unconfiguredTrainers: string[]
+}
+
+interface ActiveSubscriptionsMonth {
+  month: string
+  monthLabel: string
+  total: number
+  growthPct: number | null
+  byProduct: Record<string, number>
+  separate: Record<string, number>
+}
+
 interface MTInsights {
   kennismakingBookedRate: number
   kennismakingBookings: number
@@ -94,6 +129,20 @@ interface MTInsights {
   fitnessClientCount: number
   ptRatioPercentage: number
   kennismakingByMonth: KennismakingMonthData[]
+  ptCapacity: PTCapacity
+  activeSubscriptionsByMonth: ActiveSubscriptionsMonth[]
+}
+
+function formatDateShort(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
+}
+
+// Product rows ordered by their count in the most recent month
+function getProductRows(months: ActiveSubscriptionsMonth[], key: 'byProduct' | 'separate'): string[] {
+  const latest = months[months.length - 1]?.[key] || {}
+  const names = new Set(months.flatMap(m => Object.keys(m[key])))
+  return [...names].sort((a, b) => (latest[b] || 0) - (latest[a] || 0))
 }
 
 // Animation variants
@@ -108,6 +157,8 @@ const containerVariants = {
   },
 }
 
+// Sections that mount after data loads need their own initial/animate: the parent's
+// stagger has already finished by then, so inherited variants would leave them hidden.
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: {
@@ -220,9 +271,101 @@ export default function InzichtenPage() {
               )}
             </motion.div>
 
+            {/* PT-capaciteit deze maand */}
+            {!loading && insights?.ptCapacity && (() => {
+              const pt = insights.ptCapacity
+              const capacityConfigured = pt.totalSlots > 0
+              return (
+                <motion.div variants={itemVariants} initial="hidden" animate="visible" className="mb-8">
+                  <Card hover={false} padding="none">
+                    <CardHeader className="px-6 py-4">
+                      <CardTitle>PT-capaciteit deze maand</CardTitle>
+                      <CardDescription>
+                        Open PT-credits vs vrije PT-slots, {formatDateShort(pt.periodStart)} t/m {formatDateShort(pt.periodEnd)} ({pt.remainingDays} dagen)
+                      </CardDescription>
+                    </CardHeader>
+                    <div className="px-6 pb-6">
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <StatsCard
+                          title="Open PT-credits"
+                          value={pt.openCredits}
+                          icon={Dumbbell}
+                          variant="default"
+                          delay={0}
+                        />
+                        <StatsCard
+                          title="Vrije PT-slots"
+                          value={capacityConfigured ? pt.freeSlots : '-'}
+                          icon={CalendarClock}
+                          variant="default"
+                          delay={0.1}
+                        />
+                        <StatsCard
+                          title="Tekort aan slots"
+                          value={capacityConfigured ? Math.max(pt.gap, 0) : '-'}
+                          icon={Scale}
+                          variant={!capacityConfigured ? 'default' : pt.gap > 0 ? 'warning' : 'success'}
+                          delay={0.2}
+                        />
+                        <StatsCard
+                          title="Dekking slots / credits"
+                          value={capacityConfigured && pt.coverage !== null ? `${pt.coverage}%` : '-'}
+                          icon={Percent}
+                          variant={!capacityConfigured || pt.coverage === null ? 'default' : pt.coverage < 50 ? 'danger' : pt.coverage < 75 ? 'warning' : 'success'}
+                          delay={0.3}
+                        />
+                      </div>
+
+                      {pt.unconfiguredTrainers.length > 0 && (
+                        <p className="text-sm text-orange-700 bg-orange-50 rounded-lg px-4 py-2 mb-4">
+                          Capaciteit nog niet ingesteld voor: {pt.unconfiguredTrainers.join(', ')}. Stel het aantal PT-slots per week in via <code>PT_TRAINER_WEEKLY_CAPACITY</code>.
+                        </p>
+                      )}
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-slate-500 border-b">
+                              <th className="pb-2 pr-4">Trainer</th>
+                              <th className="pb-2 pr-4 text-right">Slots / week</th>
+                              <th className="pb-2 pr-4 text-right">Capaciteit</th>
+                              <th className="pb-2 pr-4 text-right">Geboekt</th>
+                              <th className="pb-2 text-right">Vrij</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pt.byTrainer.map(t => (
+                              <tr key={t.trainer} className="border-b border-slate-100">
+                                <td className="py-2 pr-4 font-medium">{t.trainer}</td>
+                                <td className="py-2 pr-4 text-right">{t.weeklyCapacity ?? '-'}</td>
+                                <td className="py-2 pr-4 text-right">{t.weeklyCapacity ? t.capacity : '-'}</td>
+                                <td className="py-2 pr-4 text-right">{t.booked}</td>
+                                <td className="py-2 text-right">{t.weeklyCapacity ? t.free : '-'}</td>
+                              </tr>
+                            ))}
+                            <tr className="font-semibold">
+                              <td className="py-2 pr-4">Totaal</td>
+                              <td className="py-2 pr-4" />
+                              <td className="py-2 pr-4 text-right">{capacityConfigured ? pt.totalSlots : '-'}</td>
+                              <td className="py-2 pr-4 text-right">{pt.bookedSlots}</td>
+                              <td className="py-2 text-right">{capacityConfigured ? pt.freeSlots : '-'}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <p className="text-xs text-slate-500 mt-4">
+                        {pt.ptClients} PT-klanten hebben deze periode recht op {pt.entitledCredits} credits (abonnement Nx per 4 weken, pro rata voor de resterende dagen, plus saldo van losse PT-producten). Daarvan zijn er {pt.bookedCredits} al ingepland. Vrije slots = ingestelde capaciteit per trainer minus geboekte PT-sessies.
+                      </p>
+                    </div>
+                  </Card>
+                </motion.div>
+              )
+            })()}
+
             {/* PT vs Fitness Verdeling */}
             {!loading && insights && (
-              <motion.div variants={itemVariants} className="mb-8">
+              <motion.div variants={itemVariants} initial="hidden" animate="visible" className="mb-8">
                 <Card hover={false} padding="md">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <div className="flex-1">
@@ -250,9 +393,77 @@ export default function InzichtenPage() {
               </motion.div>
             )}
 
+            {/* Actieve abonnementen per maand */}
+            {!loading && insights?.activeSubscriptionsByMonth && (() => {
+              const months = insights.activeSubscriptionsByMonth
+              const productRows = getProductRows(months, 'byProduct')
+              const separateRows = getProductRows(months, 'separate')
+              return (
+                <motion.div variants={itemVariants} initial="hidden" animate="visible" className="mb-8">
+                  <Card hover={false} padding="none">
+                    <CardHeader className="px-6 py-4">
+                      <CardTitle>Actieve abonnementen per maand</CardTitle>
+                      <CardDescription>Stand op de 1e van de maand, excl. Fitness onbeperkt (add-on)</CardDescription>
+                    </CardHeader>
+                    {/* Start scrolled to the right so the most recent month is always in view */}
+                    <div className="px-6 pb-6 overflow-x-auto" ref={el => { if (el) el.scrollLeft = el.scrollWidth }}>
+                      <table className="w-full text-xs sm:text-sm whitespace-nowrap">
+                        <thead>
+                          <tr className="text-left text-slate-500 border-b">
+                            <th className="pb-2 pr-4 sticky left-0 bg-white">Product</th>
+                            {months.map(m => (
+                              <th key={m.month} className="pb-2 pl-3 text-right">{m.monthLabel}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {productRows.map(product => (
+                            <tr key={product} className="border-b border-slate-100">
+                              <td className="py-2 pr-4 sticky left-0 bg-white">{product}</td>
+                              {months.map(m => (
+                                <td key={m.month} className="py-2 pl-3 text-right">{m.byProduct[product] || 0}</td>
+                              ))}
+                            </tr>
+                          ))}
+                          <tr className="border-b border-slate-200 font-semibold">
+                            <td className="py-2 pr-4 sticky left-0 bg-white">Totaal</td>
+                            {months.map(m => (
+                              <td key={m.month} className="py-2 pl-3 text-right">{m.total}</td>
+                            ))}
+                          </tr>
+                          <tr className="border-b-2 border-slate-200">
+                            <td className="py-2 pr-4 sticky left-0 bg-white text-slate-500">Groei t.o.v. vorige maand</td>
+                            {months.map(m => (
+                              <td
+                                key={m.month}
+                                className={cn(
+                                  'py-2 pl-3 text-right font-medium',
+                                  m.growthPct === null || m.growthPct === 0 ? 'text-slate-400' : m.growthPct > 0 ? 'text-emerald-600' : 'text-red-500'
+                                )}
+                              >
+                                {m.growthPct === null ? '-' : `${m.growthPct > 0 ? '+' : ''}${m.growthPct}%`}
+                              </td>
+                            ))}
+                          </tr>
+                          {separateRows.map(product => (
+                            <tr key={product} className="text-slate-500">
+                              <td className="py-2 pr-4 sticky left-0 bg-white">{product} <span className="text-xs">(niet in totaal)</span></td>
+                              {months.map(m => (
+                                <td key={m.month} className="py-2 pl-3 text-right">{m.separate[product] || 0}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                </motion.div>
+              )
+            })()}
+
             {/* Kennismaking Details — Laatste 13 maanden */}
             {!loading && insights && (
-              <motion.div variants={itemVariants} className="mb-4">
+              <motion.div variants={itemVariants} initial="hidden" animate="visible" className="mb-4">
                 <Card hover={false} padding="md">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <div className="flex-1">
@@ -284,7 +495,7 @@ export default function InzichtenPage() {
 
             {/* Kennismaking Details — All-time */}
             {!loading && insights && (
-              <motion.div variants={itemVariants} className="mb-8">
+              <motion.div variants={itemVariants} initial="hidden" animate="visible" className="mb-8">
                 <Card hover={false} padding="md">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <div className="flex-1">
@@ -316,7 +527,7 @@ export default function InzichtenPage() {
 
             {/* Kennismaking Funnel per Maand */}
             {!loading && insights && insights.kennismakingByMonth && (
-              <motion.div variants={itemVariants} className="mb-8">
+              <motion.div variants={itemVariants} initial="hidden" animate="visible" className="mb-8">
                 <Card hover={false} padding="none">
                   <CardHeader className="px-6 py-4">
                     <CardTitle>Kennismaking Funnel per Maand</CardTitle>
@@ -450,7 +661,7 @@ export default function InzichtenPage() {
 
             {/* Summary Stats */}
             {!loading && insights && (
-              <motion.div variants={itemVariants} className="mt-8">
+              <motion.div variants={itemVariants} initial="hidden" animate="visible" className="mt-8">
                 <Card hover={false} padding="md">
                   <div className="flex flex-wrap gap-8 justify-center text-center">
                     <div>
