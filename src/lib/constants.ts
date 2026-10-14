@@ -11,14 +11,17 @@ export const STAFF_KLANT_REFS = new Set([
 
 // PT slots per week per trainer, keyed by instructor name as returned by Trainin.
 // Trainin's API doesn't expose trainer availability, so capacity is set manually.
-// TODO: vul in met de werkelijke capaciteit (opgave Marvin). 0 = nog niet ingesteld.
+// Opgave Marvin (30-09-2026): Hugo 30, Sander 29. 0 = nog niet ingesteld.
+// TODO: overige trainers aanvullen, of uit Trainin halen zodra de integratie-API beschikbaarheid ontsluit.
 export const PT_TRAINER_WEEKLY_CAPACITY: Record<string, number> = {
   Kelly: 0,
   Marvin: 0,
   Mireille: 0,
-  Hugo: 0,
+  Hugo: 30,
   Joanna: 0,
-  Sander: 0,
+  Sander: 29,
+  Aryan: 0,
+  Sterre: 0,
 }
 
 // Subscription products left out of the monthly active subscriptions overview
