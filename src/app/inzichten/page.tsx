@@ -275,6 +275,11 @@ export default function InzichtenPage() {
             {!loading && insights?.ptCapacity && (() => {
               const pt = insights.ptCapacity
               const capacityConfigured = pt.totalSlots > 0
+              // Only part of the trainers configured: label the slot numbers as partial
+              const configuredCount = pt.byTrainer.length - pt.unconfiguredTrainers.length
+              const partialLabel = capacityConfigured && pt.unconfiguredTrainers.length > 0
+                ? ` (${configuredCount}/${pt.byTrainer.length} trainers)`
+                : ''
               return (
                 <motion.div variants={itemVariants} initial="hidden" animate="visible" className="mb-8">
                   <Card hover={false} padding="none">
@@ -294,21 +299,21 @@ export default function InzichtenPage() {
                           delay={0}
                         />
                         <StatsCard
-                          title="Vrije PT-slots"
+                          title={`Vrije PT-slots${partialLabel}`}
                           value={capacityConfigured ? pt.freeSlots : '-'}
                           icon={CalendarClock}
                           variant="default"
                           delay={0.1}
                         />
                         <StatsCard
-                          title="Tekort aan slots"
+                          title={`Tekort aan slots${partialLabel}`}
                           value={capacityConfigured ? Math.max(pt.gap, 0) : '-'}
                           icon={Scale}
                           variant={!capacityConfigured ? 'default' : pt.gap > 0 ? 'warning' : 'success'}
                           delay={0.2}
                         />
                         <StatsCard
-                          title="Dekking slots / credits"
+                          title={`Dekking slots / credits${partialLabel}`}
                           value={capacityConfigured && pt.coverage !== null ? `${pt.coverage}%` : '-'}
                           icon={Percent}
                           variant={!capacityConfigured || pt.coverage === null ? 'default' : pt.coverage < 50 ? 'danger' : pt.coverage < 75 ? 'warning' : 'success'}
