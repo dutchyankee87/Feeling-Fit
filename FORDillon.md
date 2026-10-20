@@ -46,7 +46,7 @@ The idea: if 400 credits are floating around but trainers only have 120 free slo
 **The detective work.** The obvious plan was "just read `creditsLeft` from Trainin". Before writing any code we poked the live API (read-only) and found:
 
 1. `creditsLeft` is **always 0** for PT subscriptions. Trainin doesn't expose the per-period balance. So we compute it ourselves: a "Personal Training 4x per 4 weken" subscription entitles you to `4 × remainingDays / 28` credits for the rest of the month, minus the PT sessions you've already booked.
-2. There is **no API for trainer availability** (`/employees`, `/availability` → 404). Only 6 open PT slots existed in the next 4 weeks, because trainers book clients directly instead of publishing open slots. So capacity is **configured manually** per trainer in `PT_TRAINER_WEEKLY_CAPACITY` (`src/lib/constants.ts`). Until Marvin gives the numbers, the UI shows a friendly orange warning instead of fake data.
+2. There is **no API for trainer availability** (`/employees`, `/availability` → 404). Only 6 open PT slots existed in the next 4 weeks, because trainers book clients directly instead of publishing open slots. So capacity is **configured manually** per trainer in `PT_TRAINER_CAPACITY_SCHEDULE` (`src/lib/constants.ts`). It's a schedule with `from` dates, because Marvin sends numbers like "availability from November" ahead of time. The new numbers then switch on by themselves on the right day, without anyone having to remember to deploy. Trainers without a number get a friendly orange warning instead of fake data.
 
 **Lesson:** always look at the real data before designing the feature. Ten minutes of probing saved us from building a metric on a field that is always zero.
 
