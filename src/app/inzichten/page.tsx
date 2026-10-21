@@ -323,7 +323,7 @@ export default function InzichtenPage() {
 
                       {pt.unconfiguredTrainers.length > 0 && (
                         <p className="text-sm text-orange-700 bg-orange-50 rounded-lg px-4 py-2 mb-4">
-                          Capaciteit nog niet ingesteld voor: {pt.unconfiguredTrainers.join(', ')}. Stel het aantal PT-slots per week in via <code>PT_TRAINER_WEEKLY_CAPACITY</code>.
+                          Capaciteit nog niet ingesteld voor: {pt.unconfiguredTrainers.join(', ')}. Stel het aantal PT-slots per week in via <code>PT_TRAINER_CAPACITY_SCHEDULE</code>.
                         </p>
                       )}
 
@@ -342,7 +342,7 @@ export default function InzichtenPage() {
                             {pt.byTrainer.map(t => (
                               <tr key={t.trainer} className="border-b border-slate-100">
                                 <td className="py-2 pr-4 font-medium">{t.trainer}</td>
-                                <td className="py-2 pr-4 text-right">{t.weeklyCapacity ?? '-'}</td>
+                                <td className="py-2 pr-4 text-right">{t.weeklyCapacity?.toLocaleString('nl-NL') ?? '-'}</td>
                                 <td className="py-2 pr-4 text-right">{t.weeklyCapacity ? t.capacity : '-'}</td>
                                 <td className="py-2 pr-4 text-right">{t.booked}</td>
                                 <td className="py-2 text-right">{t.weeklyCapacity ? t.free : '-'}</td>

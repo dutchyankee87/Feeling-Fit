@@ -1,7 +1,7 @@
 import { Member, RiskFactor } from './google-sheets-sync'
 import {
   STAFF_KLANT_REFS,
-  PT_TRAINER_WEEKLY_CAPACITY,
+  getWeeklyPTCapacity,
   EXCLUDED_SUBSCRIPTION_PRODUCTS,
   SEPARATE_SUBSCRIPTION_PRODUCTS,
 } from '@/lib/constants'
@@ -60,7 +60,7 @@ export interface KennismakingFunnelData {
 
 export interface PTTrainerCapacity {
   trainer: string
-  weeklyCapacity: number | null // null = niet ingesteld in PT_TRAINER_WEEKLY_CAPACITY
+  weeklyCapacity: number | null // null = niet ingesteld in PT_TRAINER_CAPACITY_SCHEDULE
   capacity: number
   booked: number
   free: number
@@ -662,9 +662,11 @@ function calculatePTCapacity(
     }
   }
 
-  const trainers = new Set([...Object.keys(PT_TRAINER_WEEKLY_CAPACITY), ...bookedByTrainer.keys()])
+  // The window never crosses a month boundary, so the capacity at its start applies throughout
+  const weeklyCapacityByTrainer = getWeeklyPTCapacity(periodStart)
+  const trainers = new Set([...Object.keys(weeklyCapacityByTrainer), ...bookedByTrainer.keys()])
   const byTrainer: PTTrainerCapacity[] = [...trainers].map(trainer => {
-    const weeklyCapacity = PT_TRAINER_WEEKLY_CAPACITY[trainer] || null
+    const weeklyCapacity = weeklyCapacityByTrainer[trainer] || null
     const capacity = weeklyCapacity ? Math.round(weeklyCapacity * remainingDays / 7) : 0
     const booked = bookedByTrainer.get(trainer) || 0
     return {

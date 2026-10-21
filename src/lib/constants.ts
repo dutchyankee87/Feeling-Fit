@@ -9,19 +9,33 @@ export const STAFF_KLANT_REFS = new Set([
   'CMKE89D',
 ])
 
-// PT slots per week per trainer, keyed by instructor name as returned by Trainin.
-// Trainin's API doesn't expose trainer availability, so capacity is set manually.
-// Opgave Marvin (30-09-2026): Hugo 30, Sander 29. 0 = nog niet ingesteld.
-// TODO: overige trainers aanvullen, of uit Trainin halen zodra de integratie-API beschikbaarheid ontsluit.
-export const PT_TRAINER_WEEKLY_CAPACITY: Record<string, number> = {
-  Kelly: 0,
-  Marvin: 0,
-  Mireille: 0,
-  Hugo: 30,
-  Joanna: 0,
-  Sander: 29,
-  Aryan: 0,
-  Sterre: 0,
+// PT slots (30 min sessions) per week per trainer, keyed by instructor name as returned by Trainin.
+// Trainin's API doesn't expose trainer availability, so capacity is set manually (opgave Marvin).
+// Each entry applies from its `from` date until the next entry. 0 = nog niet ingesteld.
+// TODO: uit Trainin halen zodra de integratie-API beschikbaarheid ontsluit (aangevraagd okt 2026).
+export interface PTCapacityPeriod {
+  from: string // YYYY-MM-DD
+  weeklySlots: Record<string, number>
+}
+
+export const PT_TRAINER_CAPACITY_SCHEDULE: PTCapacityPeriod[] = [
+  {
+    from: '2026-09-30',
+    weeklySlots: { Kelly: 0, Marvin: 0, Mireille: 0, Hugo: 30, Joanna: 0, Sander: 29, Aryan: 0, Sterre: 0 },
+  },
+  {
+    from: '2026-11-01',
+    weeklySlots: { Kelly: 12.5, Marvin: 16, Mireille: 25, Hugo: 30, Joanna: 0, Sander: 29, Aryan: 37.5, Sterre: 19.5 },
+  },
+]
+
+// Weekly PT slots per trainer that apply on the given date (YYYY-MM-DD)
+export function getWeeklyPTCapacity(dateKey: string): Record<string, number> {
+  const period = [...PT_TRAINER_CAPACITY_SCHEDULE]
+    .sort((a, b) => a.from.localeCompare(b.from))
+    .filter(p => p.from <= dateKey)
+    .pop()
+  return period?.weeklySlots ?? {}
 }
 
 // Subscription products left out of the monthly active subscriptions overview
