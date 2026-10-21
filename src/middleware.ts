@@ -1,19 +1,25 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { AUTH_COOKIE_NAME, verifySessionToken } from '@/lib/auth'
 
-const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'feelingfit2024'
+// Everything requires a session except the login page and the login API itself
+const PUBLIC_PATHS = ['/login', '/api/auth']
 
-export function middleware(request: NextRequest) {
-  // Only protect dashboard routes
-  if (!request.nextUrl.pathname.startsWith('/dashboard')) {
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  if (PUBLIC_PATHS.includes(pathname)) {
     return NextResponse.next()
   }
 
-  // Check for auth cookie
-  const authCookie = request.cookies.get('dashboard_auth')
+  const isAuthenticated = await verifySessionToken(request.cookies.get(AUTH_COOKIE_NAME)?.value)
 
-  if (authCookie?.value === 'authenticated') {
+  if (isAuthenticated) {
     return NextResponse.next()
+  }
+
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   // Redirect to login page
@@ -21,5 +27,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*']
+  // Skip Next.js internals and static files
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico|.*\\.svg$).*)']
 }
